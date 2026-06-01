@@ -295,7 +295,7 @@ export class AppDatabase {
       [
         id,
         petPackId,
-        "Yumate",
+        "YuMate",
         120,
         160,
         null,

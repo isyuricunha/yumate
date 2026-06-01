@@ -177,7 +177,7 @@ function createSnapshot(): AppSnapshot {
       {
         id: "dev-instance",
         petPackId: "ainz",
-        name: "Yumate",
+        name: "YuMate",
         x: 120,
         y: 160,
         monitorId: null,
@@ -199,7 +199,7 @@ function createSnapshot(): AppSnapshot {
     activeInstance: {
       id: "dev-instance",
       petPackId: "ainz",
-      name: "Yumate",
+      name: "YuMate",
       x: 120,
       y: 160,
       monitorId: null,

@@ -53,7 +53,7 @@ const automaticAiCooldownMs = 45_000;
 const automaticAiStableContextMs = 8_000;
 const contextPollIntervalMs = 5_000;
 
-app.setName("Yumate");
+app.setName("YuMate");
 
 app.whenReady().then(async () => {
   const paths = getRuntimePaths();
@@ -328,7 +328,7 @@ function createTray(): void {
   const iconPath = getRuntimePaths().iconPath;
   const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-  tray.setToolTip("Yumate");
+  tray.setToolTip("YuMate");
   rebuildTray();
 }
 

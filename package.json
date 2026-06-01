@@ -2,7 +2,7 @@
   "name": "yumate",
   "version": "0.1.0",
   "description": "Desktop AI pet for Windows with OpenAI-compatible chat, EdgeTTS speech, and SQLite-backed state.",
-  "author": "Yumate",
+  "author": "Yuri Cunha",
   "license": "GPL-3.0-or-later",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -41,7 +41,7 @@
   },
   "build": {
     "appId": "com.yumate.desktop",
-    "productName": "Yumate",
+    "productName": "YuMate",
     "files": [
       "dist/**/*",
       "resources/**/*",

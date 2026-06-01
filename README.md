@@ -1,6 +1,6 @@
-# Yumate
+# YuMate
 
-Yumate is a Windows-first Electron desktop AI pet. It renders transparent animated pet packs, chats with OpenAI-compatible providers, speaks through EdgeTTS-capable speech flows, and persists settings, instances, pets, and history in SQLite.
+YuMate is a Windows-first Electron desktop AI pet. It renders transparent animated pet packs, chats with OpenAI-compatible providers, speaks through EdgeTTS-capable speech flows, and persists settings, instances, pets, and history in SQLite.
 
 ## Development
 

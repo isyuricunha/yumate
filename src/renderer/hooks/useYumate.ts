@@ -19,7 +19,7 @@ export function useYumate() {
       })
       .catch((error: unknown) => {
         if (mounted) {
-          setLoadingError(error instanceof Error ? error.message : "Failed to load Yumate.");
+          setLoadingError(error instanceof Error ? error.message : "Failed to load YuMate.");
         }
       });
 
