@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Check, FolderPlus, Keyboard, Plus, RefreshCw, Settings2, Volume2, X } from "lucide-react";
 import {
   type AiProvider,
@@ -25,6 +25,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
   const [hotkeys, setHotkeys] = useState(snapshot.hotkeys);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
 
   const validationIssues = useMemo(
     () => snapshot.activePetPack.validation.issues.map((issue) => issue.message),
@@ -68,9 +69,51 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
     setNotice(context.error ?? "Contexto atualizado.");
   }
 
+  function startPanelDrag(event: PointerEvent<HTMLElement>) {
+    if ((event.target as HTMLElement | null)?.closest("button, input, textarea, select")) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { x: event.screenX, y: event.screenY };
+  }
+
+  function movePanel(event: PointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag) {
+      return;
+    }
+
+    const delta = { x: event.screenX - drag.x, y: event.screenY - drag.y };
+    dragRef.current = { x: event.screenX, y: event.screenY };
+    if (delta.x !== 0 || delta.y !== 0) {
+      void window.yumate.moveWindowBy(delta);
+    }
+  }
+
+  function endPanelDrag(event: PointerEvent<HTMLElement>) {
+    if (!dragRef.current) {
+      return;
+    }
+
+    dragRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may already be gone after cancellation.
+    }
+    void window.yumate.saveWindowPosition();
+  }
+
   return (
     <section className="panel settings-panel" data-interactive="true">
-      <header className="panel-header">
+      <header
+        className="panel-header"
+        onPointerCancel={endPanelDrag}
+        onPointerDown={startPanelDrag}
+        onPointerMove={movePanel}
+        onPointerUp={endPanelDrag}
+      >
         <div>
           <strong>Configuracoes</strong>
           <span>{notice ?? snapshot.activePetPack.displayName}</span>

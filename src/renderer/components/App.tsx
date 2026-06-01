@@ -90,6 +90,28 @@ export function App() {
     void window.yumate.setPanelState({ chatOpen, settingsOpen });
   }, [chatOpen, settingsOpen]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (settingsOpen) {
+        event.preventDefault();
+        setSettingsOpen(false);
+        return;
+      }
+
+      if (chatOpen) {
+        event.preventDefault();
+        setChatOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [chatOpen, settingsOpen]);
+
   if (loadingError) {
     return <div className="boot-error">{loadingError}</div>;
   }

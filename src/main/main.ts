@@ -127,12 +127,19 @@ function createPetWindow(): void {
   const snapshot = database.getSnapshot();
   const instance = snapshot.activeInstance;
   const preload = path.join(__dirname, "..", "preload", "preload.js");
+  const windowSize = { width: 560, height: 640 };
+  const initialPosition = clampWindowPosition(
+    Math.round(instance.x),
+    Math.round(instance.y),
+    windowSize.width,
+    windowSize.height,
+  );
 
   petWindow = new BrowserWindow({
-    width: 560,
-    height: 640,
-    x: Math.round(instance.x),
-    y: Math.round(instance.y),
+    width: windowSize.width,
+    height: windowSize.height,
+    x: initialPosition.x,
+    y: initialPosition.y,
     show: false,
     frame: false,
     transparent: true,
@@ -159,6 +166,7 @@ function createPetWindow(): void {
   }
 
   petWindow.once("ready-to-show", () => {
+    ensurePetWindowVisible();
     petWindow?.show();
     emitSnapshot();
   });
@@ -269,6 +277,10 @@ function registerIpc(): void {
 
   ipcMain.handle("ui:setPanelState", (_event, state: { chatOpen: boolean; settingsOpen: boolean }) => {
     panelsOpen = state.chatOpen || state.settingsOpen;
+    if (panelsOpen) {
+      petWindow?.setIgnoreMouseEvents(false);
+      ensurePetWindowVisible();
+    }
   });
 
   ipcMain.handle("window:setClickThrough", (_event, ignore: boolean) => {
@@ -280,7 +292,9 @@ function registerIpc(): void {
       return;
     }
     const [x, y] = petWindow.getPosition();
-    petWindow.setPosition(Math.round(x + delta.x), Math.round(y + delta.y), false);
+    const [width, height] = petWindow.getSize();
+    const next = clampWindowPosition(Math.round(x + delta.x), Math.round(y + delta.y), width, height);
+    petWindow.setPosition(next.x, next.y, false);
   });
 
   ipcMain.handle("window:savePosition", () => {
@@ -529,6 +543,39 @@ function persistWindowPosition(): void {
   database.updateInstancePosition(database.getActiveInstance().id, x, y);
 }
 
+function ensurePetWindowVisible(): void {
+  if (!petWindow) {
+    return;
+  }
+
+  const [x, y] = petWindow.getPosition();
+  const [width, height] = petWindow.getSize();
+  const next = clampWindowPosition(x, y, width, height);
+  if (next.x !== x || next.y !== y) {
+    petWindow.setPosition(next.x, next.y, false);
+    persistWindowPosition();
+  }
+}
+
+function clampWindowPosition(x: number, y: number, width: number, height: number): { x: number; y: number } {
+  const display = screen.getDisplayNearestPoint({
+    x: Math.round(x + width / 2),
+    y: Math.round(y + height / 2),
+  });
+  const bounds = display.workArea;
+  const maxX = bounds.x + bounds.width - width;
+  const maxY = bounds.y + bounds.height - height;
+
+  return {
+    x: clampNumber(x, bounds.x, Math.max(bounds.x, maxX)),
+    y: clampNumber(y, bounds.y, Math.max(bounds.y, maxY)),
+  };
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
 function startContextPolling(): void {
   void refreshWindowsContext();
   contextTimer = setInterval(() => {
@@ -761,7 +808,10 @@ function moveWindowToActiveInstance(): void {
     return;
   }
   const instance = database.getActiveInstance();
-  petWindow.setPosition(Math.round(instance.x), Math.round(instance.y), false);
+  const [width, height] = petWindow.getSize();
+  const next = clampWindowPosition(Math.round(instance.x), Math.round(instance.y), width, height);
+  petWindow.setPosition(next.x, next.y, false);
+  persistWindowPosition();
 }
 
 function contextKey(context: WindowsContext): string {

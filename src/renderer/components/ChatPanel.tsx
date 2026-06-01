@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, type PointerEvent, useRef, useState } from "react";
 import { Send, Trash2, X, Square } from "lucide-react";
 import { type AppSnapshot } from "../../shared/types";
 
@@ -10,6 +10,7 @@ interface ChatPanelProps {
 export function ChatPanel({ snapshot, onClose }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -26,9 +27,51 @@ export function ChatPanel({ snapshot, onClose }: ChatPanelProps) {
     }
   }
 
+  function startPanelDrag(event: PointerEvent<HTMLElement>) {
+    if ((event.target as HTMLElement | null)?.closest("button, input, textarea, select")) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { x: event.screenX, y: event.screenY };
+  }
+
+  function movePanel(event: PointerEvent<HTMLElement>) {
+    const drag = dragRef.current;
+    if (!drag) {
+      return;
+    }
+
+    const delta = { x: event.screenX - drag.x, y: event.screenY - drag.y };
+    dragRef.current = { x: event.screenX, y: event.screenY };
+    if (delta.x !== 0 || delta.y !== 0) {
+      void window.yumate.moveWindowBy(delta);
+    }
+  }
+
+  function endPanelDrag(event: PointerEvent<HTMLElement>) {
+    if (!dragRef.current) {
+      return;
+    }
+
+    dragRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may already be gone after cancellation.
+    }
+    void window.yumate.saveWindowPosition();
+  }
+
   return (
     <section className="panel chat-panel" data-interactive="true">
-      <header className="panel-header">
+      <header
+        className="panel-header"
+        onPointerCancel={endPanelDrag}
+        onPointerDown={startPanelDrag}
+        onPointerMove={movePanel}
+        onPointerUp={endPanelDrag}
+      >
         <div>
           <strong>{snapshot.activeInstance.name}</strong>
           <span>{snapshot.providers[0]?.model || "Modelo nao configurado"}</span>
