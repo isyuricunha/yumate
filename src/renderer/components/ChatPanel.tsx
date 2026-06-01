@@ -19,8 +19,11 @@ export function ChatPanel({ snapshot, onClose }: ChatPanelProps) {
     }
     setMessage("");
     setSending(true);
-    await window.yumate.sendMessage(content);
-    setSending(false);
+    try {
+      await window.yumate.sendMessage(content);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
