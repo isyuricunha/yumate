@@ -387,6 +387,12 @@ function rebuildTray(): void {
       },
     },
     {
+      label: snapshot.activeInstance.movementEnabled ? t("tray.pausePet") : t("tray.resumePet"),
+      click: () => {
+        setActiveInstanceMovementEnabled(!snapshot.activeInstance.movementEnabled);
+      },
+    },
+    {
       label: petWindow?.isVisible() ? t("tray.hidePet") : t("tray.showPet"),
       click: () => {
         if (petWindow?.isVisible()) {
@@ -765,6 +771,34 @@ function startMovementLoop(): void {
   movementTimer = setInterval(() => {
     moveAutomatically();
   }, 4200);
+}
+
+function setActiveInstanceMovementEnabled(enabled: boolean): void {
+  const snapshot = database.getSnapshot(currentWindowsContext);
+  database.updateSettings({
+    provider: snapshot.providers[0],
+    tts: snapshot.tts,
+    global: snapshot.settings,
+    hotkeys: snapshot.hotkeys,
+    instance: {
+      id: snapshot.activeInstance.id,
+      name: snapshot.activeInstance.name,
+      scale: snapshot.activeInstance.scale,
+      persona: snapshot.activeInstance.persona,
+      systemPrompt: snapshot.activeInstance.systemPrompt,
+      voice: snapshot.activeInstance.voice,
+      model: snapshot.activeInstance.model,
+      providerId: snapshot.activeInstance.providerId,
+      effort: snapshot.activeInstance.effort,
+      ttsEnabled: snapshot.activeInstance.ttsEnabled,
+      movementEnabled: enabled,
+    },
+  });
+  if (!enabled && isAiBlockingState(snapshot.activeInstance.currentState) === false) {
+    setPetState("idle");
+  }
+  emitSnapshot();
+  rebuildTray();
 }
 
 function moveAutomatically(): void {
