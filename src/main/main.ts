@@ -13,7 +13,7 @@ import {
 import { AppDatabase } from "./database";
 import { PetPackService } from "./petPackService";
 import { AiService } from "./aiService";
-import { TtsService } from "./ttsService";
+import { TtsCanceledError, TtsService } from "./ttsService";
 import { emptyWindowsContext, WindowsContextService } from "./windowsContextService";
 import {
   type AppSnapshot,
@@ -38,8 +38,19 @@ let contextTimer: NodeJS.Timeout | null = null;
 let movementTimer: NodeJS.Timeout | null = null;
 let movementDirection: -1 | 1 = 1;
 let panelsOpen = false;
+let lastAutomaticContextKey: string | null = null;
+let lastAutomaticCallAt = 0;
+let automaticCallInFlight = false;
+let automaticAiPrimed = false;
+let pendingAutomaticContext: WindowsContext | null = null;
+let pendingAutomaticContextKey: string | null = null;
+let pendingAutomaticContextSince = 0;
+let lastAutomaticDisabledLogAt = 0;
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const automaticAiCooldownMs = 45_000;
+const automaticAiStableContextMs = 8_000;
+const contextPollIntervalMs = 5_000;
 
 app.setName("Yumate");
 
@@ -56,6 +67,7 @@ app.whenReady().then(async () => {
   }
 
   database.ensureDefaultInstance(firstValidPack.id);
+  database.resetTransientRuntimeStates();
   windowsContextService = new WindowsContextService();
   aiService = new AiService(database, windowsContextService);
   ttsService = new TtsService(paths.userData);
@@ -188,35 +200,17 @@ function registerIpc(): void {
     const result = await aiService.sendMessage(instance, content);
 
     if (!result.ok || !result.assistantMessage) {
-      setPetState("error", result.error ?? "Falha ao chamar IA.");
+      if (isInterrupted(result.error)) {
+        setPetState("idle");
+      } else {
+        setRecoverableErrorState(result.error ?? "Falha ao chamar IA.");
+      }
       emitSnapshot();
       return result;
     }
 
     emitSnapshot();
-    setPetState("reviewing", result.assistantMessage.content);
-
-    const tts = database.getTtsSettings();
-    const currentInstance = database.getActiveInstance();
-    if (currentInstance.ttsEnabled && !tts.muted) {
-      try {
-        setPetState("speaking", result.assistantMessage.content);
-        const playback = await ttsService.synthesize(result.assistantMessage.content, {
-          ...tts,
-          voice: currentInstance.voice || tts.voice,
-        });
-        if (playback) {
-          sendToRenderer("tts:play", playback);
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Falha no EdgeTTS.";
-        setPetState("error", message);
-      }
-    } else {
-      showBubble(result.assistantMessage.content, "neutral", 12000);
-      setPetState("idle");
-    }
-
+    await presentAssistantMessage(result.assistantMessage, "chat");
     emitSnapshot();
     return result;
   });
@@ -487,6 +481,18 @@ function setPetState(state: BehaviorState, bubble?: string): void {
   }
 }
 
+function setRecoverableErrorState(message: string): void {
+  const instanceId = database.getActiveInstance().id;
+  setPetState("error", message);
+  setTimeout(() => {
+    const instance = database.getActiveInstance();
+    if (instance.id === instanceId && instance.currentState === "error") {
+      setPetState("idle");
+      emitSnapshot();
+    }
+  }, 8000);
+}
+
 function showBubble(text: string, tone: "neutral" | "thinking" | "error", timeoutMs = 8000): void {
   sendToRenderer("bubble:show", { text, tone, timeoutMs });
 }
@@ -514,12 +520,184 @@ function startContextPolling(): void {
   void refreshWindowsContext();
   contextTimer = setInterval(() => {
     void refreshWindowsContext();
-  }, 15000);
+  }, contextPollIntervalMs);
 }
 
 async function refreshWindowsContext(): Promise<void> {
   currentWindowsContext = await windowsContextService.capture(database.getGlobalSettings());
   emitSnapshot();
+  void maybeRunAutomaticAi(currentWindowsContext);
+}
+
+async function maybeRunAutomaticAi(nextContext: WindowsContext): Promise<void> {
+  const settings = database.getGlobalSettings();
+  const nowMs = Date.now();
+
+  if (!settings.windowsContextEnabled || !settings.automaticAiCallsEnabled) {
+    clearPendingAutomaticContext();
+    logAutomaticDisabled(settings, nowMs);
+    return;
+  }
+
+  if (nextContext.error) {
+    clearPendingAutomaticContext();
+    logRuntime("auto-ai", "skip=context-error", { error: nextContext.error });
+    return;
+  }
+
+  if (!nextContext.enabled || !nextContext.activeProcessName) {
+    clearPendingAutomaticContext();
+    logRuntime("auto-ai", "skip=no-context", contextLogPayload(nextContext));
+    return;
+  }
+
+  if (isOwnAppContext(nextContext)) {
+    clearPendingAutomaticContext();
+    return;
+  }
+
+  if (isTransientContext(nextContext)) {
+    clearPendingAutomaticContext();
+    logRuntime("auto-ai", "skip=transient-context", contextLogPayload(nextContext));
+    return;
+  }
+
+  if (panelsOpen) {
+    clearPendingAutomaticContext();
+    logRuntime("auto-ai", "skip=panel-open", contextLogPayload(nextContext));
+    return;
+  }
+
+  if (!petWindow?.isVisible()) {
+    clearPendingAutomaticContext();
+    logRuntime("auto-ai", "skip=pet-hidden", contextLogPayload(nextContext));
+    return;
+  }
+
+  if (automaticCallInFlight) {
+    logRuntime("auto-ai", "skip=in-flight", contextLogPayload(nextContext));
+    return;
+  }
+
+  const instance = database.getActiveInstance();
+  if (isAiBlockingState(instance.currentState)) {
+    logRuntime("auto-ai", "skip=busy-state", { state: instance.currentState, ...contextLogPayload(nextContext) });
+    return;
+  }
+
+  const nextKey = contextKey(nextContext);
+
+  if (!automaticAiPrimed) {
+    automaticAiPrimed = true;
+    lastAutomaticContextKey = nextKey;
+    clearPendingAutomaticContext();
+    logRuntime("auto-ai", "context=primed", contextLogPayload(nextContext));
+    return;
+  }
+
+  if (nextKey === lastAutomaticContextKey) {
+    clearPendingAutomaticContext();
+    return;
+  }
+
+  if (nextKey !== pendingAutomaticContextKey) {
+    pendingAutomaticContext = nextContext;
+    pendingAutomaticContextKey = nextKey;
+    pendingAutomaticContextSince = nowMs;
+    logRuntime("auto-ai", "context=observed", contextLogPayload(nextContext));
+    return;
+  }
+
+  pendingAutomaticContext = nextContext;
+  const stableForMs = nowMs - pendingAutomaticContextSince;
+  if (stableForMs < automaticAiStableContextMs) {
+    logRuntime("auto-ai", "wait=stable-context", {
+      remainingMs: automaticAiStableContextMs - stableForMs,
+      ...contextLogPayload(nextContext),
+    });
+    return;
+  }
+
+  if (nowMs - lastAutomaticCallAt < automaticAiCooldownMs) {
+    logRuntime("auto-ai", "skip=cooldown", {
+      remainingMs: automaticAiCooldownMs - (nowMs - lastAutomaticCallAt),
+      ...contextLogPayload(nextContext),
+    });
+    return;
+  }
+
+  const stableContext = pendingAutomaticContext ?? nextContext;
+  automaticCallInFlight = true;
+  lastAutomaticCallAt = nowMs;
+  lastAutomaticContextKey = nextKey;
+  clearPendingAutomaticContext();
+
+  try {
+    logRuntime("auto-ai", "call=start", contextLogPayload(stableContext));
+    setPetState("thinking", "Vi uma mudanca de contexto.");
+    setPetState("processing");
+    const result = await aiService.sendAutomaticContext(instance, stableContext);
+
+    if (!result.ok) {
+      logRuntime("auto-ai", "call=error", { error: result.error, ...contextLogPayload(stableContext) });
+      if (isInterrupted(result.error)) {
+        setPetState("idle");
+      } else {
+        setRecoverableErrorState(result.error ?? "Falha na chamada automatica.");
+      }
+      emitSnapshot();
+      return;
+    }
+
+    if (result.silent || !result.assistantMessage) {
+      logRuntime("auto-ai", "call=silent", contextLogPayload(stableContext));
+      setPetState("idle");
+      emitSnapshot();
+      return;
+    }
+
+    logRuntime("auto-ai", "call=assistant", {
+      response: result.assistantMessage.content,
+      ...contextLogPayload(stableContext),
+    });
+    await presentAssistantMessage(result.assistantMessage, "auto-ai");
+    emitSnapshot();
+  } finally {
+    automaticCallInFlight = false;
+  }
+}
+
+async function presentAssistantMessage(
+  assistantMessage: NonNullable<Awaited<ReturnType<AiService["sendMessage"]>>["assistantMessage"]>,
+  source: "chat" | "auto-ai",
+): Promise<void> {
+  setPetState("reviewing", assistantMessage.content);
+
+  const tts = database.getTtsSettings();
+  const currentInstance = database.getActiveInstance();
+  if (currentInstance.ttsEnabled && !tts.muted) {
+    try {
+      setPetState("speaking", assistantMessage.content);
+      const playback = await ttsService.synthesize(assistantMessage.content, {
+        ...tts,
+        voice: currentInstance.voice || tts.voice,
+      });
+      if (playback) {
+        sendToRenderer("tts:play", playback);
+      }
+    } catch (error) {
+      if (error instanceof TtsCanceledError) {
+        setPetState("idle");
+        return;
+      }
+      const message = error instanceof Error ? error.message : "Falha no EdgeTTS.";
+      logRuntime(source, "tts=error", { error: message });
+      setRecoverableErrorState(message);
+    }
+  } else {
+    showBubble(assistantMessage.content, "neutral", source === "auto-ai" ? 10000 : 12000);
+    setPetState("idle");
+  }
 }
 
 function startMovementLoop(): void {
@@ -571,4 +749,62 @@ function moveWindowToActiveInstance(): void {
   }
   const instance = database.getActiveInstance();
   petWindow.setPosition(Math.round(instance.x), Math.round(instance.y), false);
+}
+
+function contextKey(context: WindowsContext): string {
+  return [
+    context.activeProcessName?.toLowerCase().trim() ?? "",
+    context.activeWindowTitle?.toLowerCase().trim() ?? "",
+  ].join("|");
+}
+
+function clearPendingAutomaticContext(): void {
+  pendingAutomaticContext = null;
+  pendingAutomaticContextKey = null;
+  pendingAutomaticContextSince = 0;
+}
+
+function isOwnAppContext(context: WindowsContext): boolean {
+  const processName = context.activeProcessName?.toLowerCase() ?? "";
+  const title = context.activeWindowTitle?.toLowerCase() ?? "";
+  return processName === "yumate" || (processName === "electron" && title.includes("yumate"));
+}
+
+function isTransientContext(context: WindowsContext): boolean {
+  const processName = context.activeProcessName?.toLowerCase() ?? "";
+  const title = context.activeWindowTitle?.toLowerCase() ?? "";
+
+  return title === "task switching" || (processName === "explorer" && title.includes("task switching"));
+}
+
+function isAiBlockingState(state: BehaviorState): boolean {
+  return state === "thinking" || state === "processing" || state === "reviewing" || state === "speaking";
+}
+
+function isInterrupted(error: string | undefined): boolean {
+  return error === "A resposta foi interrompida.";
+}
+
+function contextLogPayload(context: WindowsContext): Record<string, unknown> {
+  return {
+    process: context.activeProcessName,
+    title: context.activeWindowTitle,
+    capturedAt: context.capturedAt,
+  };
+}
+
+function logAutomaticDisabled(settings: ReturnType<AppDatabase["getGlobalSettings"]>, nowMs: number): void {
+  if (nowMs - lastAutomaticDisabledLogAt < 60_000) {
+    return;
+  }
+
+  lastAutomaticDisabledLogAt = nowMs;
+  logRuntime("auto-ai", "disabled", {
+    windowsContextEnabled: settings.windowsContextEnabled,
+    automaticAiCallsEnabled: settings.automaticAiCallsEnabled,
+  });
+}
+
+function logRuntime(scope: string, event: string, payload: Record<string, unknown> = {}): void {
+  console.info(`[yumate:${scope}] ${event} ${JSON.stringify(payload)}`);
 }

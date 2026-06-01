@@ -208,6 +208,7 @@ export interface SendMessageResult {
   ok: boolean;
   assistantMessage?: ChatMessage;
   error?: string;
+  silent?: boolean;
 }
 
 export interface TtsPlaybackRequest {

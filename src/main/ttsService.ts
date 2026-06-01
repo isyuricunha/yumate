@@ -8,6 +8,7 @@ export class TtsService {
   private readonly cacheDirectory: string;
   private activeProcess: ReturnType<typeof spawn> | null = null;
   private queue: Promise<TtsPlaybackRequest | null> = Promise.resolve(null);
+  private cancelRequested = false;
 
   constructor(userDataPath: string) {
     this.cacheDirectory = path.join(userDataPath, "tts-cache");
@@ -19,12 +20,17 @@ export class TtsService {
       return Promise.resolve(null);
     }
 
-    this.queue = this.queue.then(() => this.createAudio(text, settings));
+    this.queue = this.queue.catch(() => null).then(() => this.createAudio(text, settings));
     return this.queue;
   }
 
   stop(): void {
-    this.activeProcess?.kill();
+    if (this.activeProcess) {
+      this.cancelRequested = true;
+      this.activeProcess.kill();
+    } else {
+      this.cancelRequested = false;
+    }
     this.activeProcess = null;
     this.queue = Promise.resolve(null);
   }
@@ -126,12 +132,18 @@ export class TtsService {
       child.on("error", (error) => {
         clearTimeout(timer);
         this.activeProcess = null;
+        this.cancelRequested = false;
         reject(error);
       });
 
       child.on("close", (code) => {
         clearTimeout(timer);
         this.activeProcess = null;
+        if (this.cancelRequested) {
+          this.cancelRequested = false;
+          reject(new TtsCanceledError());
+          return;
+        }
         if (code === 0) {
           resolve();
         } else {
@@ -139,6 +151,13 @@ export class TtsService {
         }
       });
     });
+  }
+}
+
+export class TtsCanceledError extends Error {
+  constructor() {
+    super("TTS synthesis canceled.");
+    this.name = "TtsCanceledError";
   }
 }
 

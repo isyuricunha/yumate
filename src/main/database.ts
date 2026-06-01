@@ -144,7 +144,7 @@ export class AppDatabase {
     }
 
     const conversation = this.ensureConversation(activeInstance.id);
-    const messages = this.getMessages(conversation.id);
+    const messages = settings.chatHistoryEnabled ? this.getMessages(conversation.id) : [];
 
     return {
       settings,
@@ -312,6 +312,15 @@ export class AppDatabase {
 
     this.setUiState("activeInstanceId", id);
     return this.getActiveInstance();
+  }
+
+  resetTransientRuntimeStates(): void {
+    this.run(
+      `UPDATE pet_instances
+       SET current_state = 'idle', updated_at = ?
+       WHERE current_state IN ('thinking', 'processing', 'reviewing', 'speaking', 'clicked', 'walking-left', 'walking-right', 'error')`,
+      [now()],
+    );
   }
 
   getInstances(): PetInstance[] {
