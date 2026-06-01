@@ -402,13 +402,17 @@ export class AppDatabase {
     this.updateHotkeys(payload.hotkeys);
     this.run(
       `UPDATE pet_instances SET
-        scale = ?, persona = ?, system_prompt = ?, effort = ?, tts_enabled = ?,
-        movement_enabled = ?, updated_at = ?
+        name = ?, scale = ?, persona = ?, system_prompt = ?, voice = ?, model = ?, provider_id = ?,
+        effort = ?, tts_enabled = ?, movement_enabled = ?, updated_at = ?
       WHERE id = ?`,
       [
+        payload.instance.name,
         payload.instance.scale,
         payload.instance.persona,
         payload.instance.systemPrompt,
+        payload.instance.voice,
+        payload.instance.model,
+        payload.instance.providerId,
         payload.instance.effort,
         payload.instance.ttsEnabled ? 1 : 0,
         payload.instance.movementEnabled ? 1 : 0,

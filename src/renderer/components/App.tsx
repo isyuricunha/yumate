@@ -111,9 +111,13 @@ export function App() {
       tts: { ...snapshot.tts, muted: nextMuted },
       instance: {
         id: snapshot.activeInstance.id,
+        name: snapshot.activeInstance.name,
         scale: snapshot.activeInstance.scale,
         persona: snapshot.activeInstance.persona,
         systemPrompt: snapshot.activeInstance.systemPrompt,
+        voice: snapshot.activeInstance.voice,
+        model: snapshot.activeInstance.model,
+        providerId: snapshot.activeInstance.providerId,
         effort: snapshot.activeInstance.effort,
         ttsEnabled: snapshot.activeInstance.ttsEnabled,
         movementEnabled: snapshot.activeInstance.movementEnabled,

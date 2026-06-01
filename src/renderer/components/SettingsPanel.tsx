@@ -209,6 +209,10 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
         {tab === "pet" && (
           <fieldset>
             <label>
+              <span>Name</span>
+              <input value={instance.name} onChange={(event) => setInstance({ ...instance, name: event.target.value })} />
+            </label>
+            <label>
               <span>Scale</span>
               <input
                 type="range"
@@ -229,6 +233,22 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 value={instance.systemPrompt}
                 onChange={(event) => setInstance({ ...instance, systemPrompt: event.target.value })}
                 rows={5}
+              />
+            </label>
+            <label>
+              <span>Model override</span>
+              <input
+                placeholder={provider.model}
+                value={instance.model ?? ""}
+                onChange={(event) => setInstance({ ...instance, model: event.target.value.trim() || null })}
+              />
+            </label>
+            <label>
+              <span>Voice override</span>
+              <input
+                placeholder={tts.voice}
+                value={instance.voice ?? ""}
+                onChange={(event) => setInstance({ ...instance, voice: event.target.value.trim() || null })}
               />
             </label>
             <label className="check-row">
@@ -402,9 +422,13 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
 function toInstancePayload(instance: PetInstance) {
   return {
     id: instance.id,
+    name: instance.name,
     scale: instance.scale,
     persona: instance.persona,
     systemPrompt: instance.systemPrompt,
+    voice: instance.voice,
+    model: instance.model,
+    providerId: instance.providerId,
     effort: instance.effort,
     ttsEnabled: instance.ttsEnabled,
     movementEnabled: instance.movementEnabled,

@@ -198,7 +198,17 @@ export interface SaveSettingsPayload {
   tts: TtsSettings;
   instance: Pick<
     PetInstance,
-    "id" | "scale" | "persona" | "systemPrompt" | "effort" | "ttsEnabled" | "movementEnabled"
+    | "id"
+    | "name"
+    | "scale"
+    | "persona"
+    | "systemPrompt"
+    | "voice"
+    | "model"
+    | "providerId"
+    | "effort"
+    | "ttsEnabled"
+    | "movementEnabled"
   >;
   global: GlobalSettings;
   hotkeys: HotkeySetting[];
