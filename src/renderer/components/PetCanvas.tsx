@@ -111,6 +111,11 @@ export function PetCanvas({ pack, state, scale, onClick }: PetCanvasProps) {
 }
 
 function inferMetadata(image: HTMLImageElement): DesktopPetMetadata {
+  const codexMetadata = inferCodexOpenPetMetadata(image);
+  if (codexMetadata) {
+    return codexMetadata;
+  }
+
   return {
     schemaVersion: 1,
     frameWidth: image.naturalWidth,
@@ -122,6 +127,50 @@ function inferMetadata(image: HTMLImageElement): DesktopPetMetadata {
     },
     stateMap: {
       idle: "idle",
+    },
+  };
+}
+
+function inferCodexOpenPetMetadata(image: HTMLImageElement): DesktopPetMetadata | null {
+  const columns = 8;
+  const rows = 9;
+  if (image.naturalWidth % columns !== 0 || image.naturalHeight % rows !== 0) {
+    return null;
+  }
+
+  const frameWidth = image.naturalWidth / columns;
+  const frameHeight = image.naturalHeight / rows;
+  if (frameWidth < 64 || frameHeight < 64) {
+    return null;
+  }
+
+  return {
+    schemaVersion: 1,
+    frameWidth,
+    frameHeight,
+    columns,
+    rows,
+    animations: {
+      idle: { row: 0, frames: 6, fps: 6, loop: true },
+      "running-right": { row: 1, frames: 8, fps: 10, loop: true },
+      "running-left": { row: 2, frames: 8, fps: 10, loop: true },
+      waving: { row: 3, frames: 4, fps: 7, loop: true },
+      jumping: { row: 4, frames: 5, fps: 9, loop: false, returnState: "idle" },
+      failed: { row: 5, frames: 8, fps: 8, loop: true },
+      waiting: { row: 6, frames: 6, fps: 5, loop: true },
+      running: { row: 7, frames: 6, fps: 9, loop: true },
+      review: { row: 8, frames: 6, fps: 6, loop: true },
+    },
+    stateMap: {
+      idle: "idle",
+      "walking-right": "running-right",
+      "walking-left": "running-left",
+      thinking: "waiting",
+      processing: "running",
+      reviewing: "review",
+      speaking: "waving",
+      clicked: "jumping",
+      error: "failed",
     },
   };
 }
