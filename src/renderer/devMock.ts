@@ -21,12 +21,16 @@ export function installDevMock(): void {
     async getSnapshot() {
       return snapshot;
     },
+    async getWindowsContext() {
+      return snapshot.windowsContext;
+    },
     async saveSettings(payload) {
       snapshot = {
         ...snapshot,
         settings: payload.global,
         providers: [payload.provider],
         tts: payload.tts,
+        hotkeys: payload.hotkeys,
         activeInstance: {
           ...snapshot.activeInstance,
           ...payload.instance,
@@ -63,6 +67,34 @@ export function installDevMock(): void {
     async selectPet() {
       return snapshot;
     },
+    async createInstance(petPackId) {
+      const now = new Date().toISOString();
+      const instance = {
+        ...snapshot.activeInstance,
+        id: crypto.randomUUID(),
+        petPackId: petPackId ?? snapshot.activeInstance.petPackId,
+        name: `${snapshot.activeInstance.name} ${snapshot.instances.length + 1}`,
+        x: snapshot.activeInstance.x + 36,
+        y: snapshot.activeInstance.y + 36,
+        createdAt: now,
+        updatedAt: now,
+      };
+      snapshot = {
+        ...snapshot,
+        instances: [...snapshot.instances, instance],
+        activeInstance: instance,
+      };
+      emit("snapshot:changed", snapshot);
+      return snapshot;
+    },
+    async selectInstance(instanceId) {
+      const instance = snapshot.instances.find((item) => item.id === instanceId);
+      if (instance) {
+        snapshot = { ...snapshot, activeInstance: instance };
+        emit("snapshot:changed", snapshot);
+      }
+      return snapshot;
+    },
     async setPetState(state) {
       snapshot = {
         ...snapshot,
@@ -70,6 +102,7 @@ export function installDevMock(): void {
       };
       emit("state:changed", { instanceId: snapshot.activeInstance.id, state });
     },
+    async setPanelState() {},
     async setClickThrough() {},
     async moveWindowBy() {},
     async saveWindowPosition() {},
@@ -133,6 +166,29 @@ function createSnapshot(): AppSnapshot {
       updatedAt: now,
     },
     petPacks: [devPack(now)],
+    instances: [
+      {
+        id: "dev-instance",
+        petPackId: "ainz",
+        name: "Yumate",
+        x: 120,
+        y: 160,
+        monitorId: null,
+        scale: 1,
+        visible: true,
+        persona: "Companheiro visual em portugues brasileiro.",
+        systemPrompt: "Responda em portugues brasileiro. Seja casual, conciso e util.",
+        voice: null,
+        model: null,
+        providerId: "default-openai-compatible",
+        effort: "medium",
+        ttsEnabled: true,
+        movementEnabled: false,
+        currentState: "idle",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
     activeInstance: {
       id: "dev-instance",
       petPackId: "ainz",
@@ -163,6 +219,20 @@ function createSnapshot(): AppSnapshot {
       updatedAt: now,
     },
     messages: [],
+    hotkeys: [
+      { action: "mute", accelerator: "CommandOrControl+Alt+M", enabled: true },
+      { action: "open-chat", accelerator: "CommandOrControl+Alt+Y", enabled: true },
+      { action: "stop-speech", accelerator: "CommandOrControl+Alt+S", enabled: true },
+      { action: "toggle-pet", accelerator: "CommandOrControl+Alt+P", enabled: true },
+    ],
+    windowsContext: {
+      enabled: false,
+      activeWindowTitle: null,
+      activeProcessName: null,
+      activeProcessId: null,
+      capturedAt: null,
+      error: null,
+    },
   };
 }
 

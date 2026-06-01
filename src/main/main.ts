@@ -339,6 +339,17 @@ function rebuildTray(): void {
       rebuildTray();
     },
   }));
+  const instanceItems = snapshot.instances.map((instance) => ({
+    label: instance.name,
+    type: "radio" as const,
+    checked: instance.id === snapshot.activeInstance.id,
+    click: () => {
+      database.selectInstance(instance.id);
+      moveWindowToActiveInstance();
+      emitSnapshot();
+      rebuildTray();
+    },
+  }));
 
   const menu = Menu.buildFromTemplate([
     {
@@ -379,6 +390,19 @@ function rebuildTray(): void {
     {
       label: "Select active pet",
       submenu: petItems.length > 0 ? petItems : [{ label: "No pets installed", enabled: false }],
+    },
+    {
+      label: "Select instance",
+      submenu: instanceItems.length > 0 ? instanceItems : [{ label: "No instances", enabled: false }],
+    },
+    {
+      label: "Create instance",
+      click: () => {
+        database.createInstance(snapshot.activeInstance.petPackId);
+        moveWindowToActiveInstance();
+        emitSnapshot();
+        rebuildTray();
+      },
     },
     {
       label: "Import pet",

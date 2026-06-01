@@ -86,6 +86,10 @@ export function App() {
     };
   }, [snapshot?.settings.clickThroughEnabled]);
 
+  useEffect(() => {
+    void window.yumate.setPanelState({ chatOpen, settingsOpen });
+  }, [chatOpen, settingsOpen]);
+
   if (loadingError) {
     return <div className="boot-error">{loadingError}</div>;
   }
@@ -115,6 +119,7 @@ export function App() {
         movementEnabled: snapshot.activeInstance.movementEnabled,
       },
       global: snapshot.settings,
+      hotkeys: snapshot.hotkeys,
     });
   };
 

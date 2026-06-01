@@ -292,7 +292,7 @@ select:focus {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
   gap: 4px;
   padding: 8px 10px;
   border-bottom: 1px solid rgba(31, 41, 55, 0.1);
@@ -370,6 +370,11 @@ label span {
   background: #ffffff;
 }
 
+.wide-command span,
+.panel-footer button span {
+  white-space: nowrap;
+}
+
 .pet-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -393,6 +398,33 @@ label span {
   color: #7f1d1d;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.context-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid rgba(31, 41, 55, 0.12);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.context-status span {
+  color: #263246;
+  font-size: 12px;
+}
+
+.context-status small {
+  color: #667085;
+  overflow-wrap: anywhere;
+}
+
+.hotkey-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 8px;
+  align-items: center;
 }
 
 .panel-footer {

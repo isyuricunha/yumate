@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Bot, Check, FolderPlus, Settings2, Volume2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, Check, FolderPlus, Keyboard, Plus, RefreshCw, Settings2, Volume2, X } from "lucide-react";
 import {
   type AiProvider,
   type AppSnapshot,
@@ -14,7 +14,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-type Tab = "ai" | "tts" | "pet" | "privacy";
+type Tab = "ai" | "tts" | "pet" | "privacy" | "hotkeys";
 
 export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>("ai");
@@ -22,6 +22,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
   const [tts, setTts] = useState<TtsSettings>(snapshot.tts);
   const [instance, setInstance] = useState(snapshot.activeInstance);
   const [global, setGlobal] = useState<GlobalSettings>(snapshot.settings);
+  const [hotkeys, setHotkeys] = useState(snapshot.hotkeys);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -30,6 +31,14 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
     [snapshot.activePetPack.validation.issues],
   );
 
+  useEffect(() => {
+    setProvider(snapshot.providers[0]);
+    setTts(snapshot.tts);
+    setInstance(snapshot.activeInstance);
+    setGlobal(snapshot.settings);
+    setHotkeys(snapshot.hotkeys);
+  }, [snapshot]);
+
   async function save() {
     setSaving(true);
     await window.yumate.saveSettings({
@@ -37,6 +46,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
       tts,
       instance: toInstancePayload(instance),
       global,
+      hotkeys,
     });
     setSaving(false);
     setNotice("Salvo.");
@@ -46,6 +56,16 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
   async function importPet() {
     const result = await window.yumate.importPet();
     setNotice(result.ok ? "Pet importado." : result.error ?? "Importacao cancelada.");
+  }
+
+  async function createInstance() {
+    await window.yumate.createInstance(snapshot.activeInstance.petPackId);
+    setNotice("Instancia criada.");
+  }
+
+  async function refreshContext() {
+    const context = await window.yumate.getWindowsContext();
+    setNotice(context.error ?? "Contexto atualizado.");
   }
 
   return (
@@ -72,6 +92,9 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
         </button>
         <button className={tab === "privacy" ? "active" : ""} title="Privacy" type="button" onClick={() => setTab("privacy")}>
           <Check size={17} />
+        </button>
+        <button className={tab === "hotkeys" ? "active" : ""} title="Hotkeys" type="button" onClick={() => setTab("hotkeys")}>
+          <Keyboard size={17} />
         </button>
       </div>
 
@@ -208,6 +231,31 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 rows={5}
               />
             </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={instance.movementEnabled}
+                onChange={(event) => setInstance({ ...instance, movementEnabled: event.target.checked })}
+              />
+              <span>Automatic movement</span>
+            </label>
+            <div className="pet-list">
+              {snapshot.instances.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={item.id === snapshot.activeInstance.id ? "selected" : ""}
+                  onClick={() => window.yumate.selectInstance(item.id)}
+                >
+                  <span>{item.name}</span>
+                  <small>{item.petPackId}</small>
+                </button>
+              ))}
+            </div>
+            <button className="wide-command" type="button" onClick={createInstance}>
+              <Plus size={17} />
+              <span>Instance</span>
+            </button>
             <div className="pet-list">
               {snapshot.petPacks.map((pack) => (
                 <button
@@ -272,6 +320,51 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
               />
               <span>Automatic AI calls</span>
             </label>
+            <div className="context-status">
+              <span>{snapshot.windowsContext.enabled ? "Context enabled" : "Context disabled"}</span>
+              <small>
+                {snapshot.windowsContext.error ??
+                  snapshot.windowsContext.activeProcessName ??
+                  "No active window context captured."}
+              </small>
+            </div>
+            <button className="wide-command" type="button" onClick={refreshContext}>
+              <RefreshCw size={17} />
+              <span>Refresh context</span>
+            </button>
+          </fieldset>
+        )}
+
+        {tab === "hotkeys" && (
+          <fieldset>
+            {hotkeys.map((hotkey) => (
+              <div className="hotkey-row" key={hotkey.action}>
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={hotkey.enabled}
+                    onChange={(event) =>
+                      setHotkeys((items) =>
+                        items.map((item) =>
+                          item.action === hotkey.action ? { ...item, enabled: event.target.checked } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <span>{hotkey.action}</span>
+                </label>
+                <input
+                  value={hotkey.accelerator}
+                  onChange={(event) =>
+                    setHotkeys((items) =>
+                      items.map((item) =>
+                        item.action === hotkey.action ? { ...item, accelerator: event.target.value } : item,
+                      ),
+                    )
+                  }
+                />
+              </div>
+            ))}
           </fieldset>
         )}
       </div>
