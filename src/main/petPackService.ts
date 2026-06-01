@@ -7,6 +7,12 @@ import { assertSafeRelativePath, resolveInside, sanitizePetId } from "./fileSafe
 import { validatePetJson } from "./petValidation";
 import { type ImportPetResult, type InstalledPetPack, type PetJson } from "../shared/types";
 
+interface PreparedPetDestination {
+  id: string;
+  displayName: string;
+  destination: string;
+}
+
 export class PetPackService {
   constructor(
     private readonly database: AppDatabase,
@@ -125,7 +131,8 @@ export class PetPackService {
       throw new Error(formatValidationError(validation.issues));
     }
 
-    const destination = await this.prepareDestination(pet.id, parent);
+    const prepared = await this.prepareDestination(pet, parent);
+    const { destination } = prepared;
     fs.rmSync(destination, { recursive: true, force: true });
     fs.mkdirSync(destination, { recursive: true });
 
@@ -133,7 +140,7 @@ export class PetPackService {
     const sourceSpritesheet = resolveInside(sourceDirectory, safeSpritesheetPath);
     const destinationSpritesheet = path.join(destination, safeSpritesheetPath);
     fs.mkdirSync(path.dirname(destinationSpritesheet), { recursive: true });
-    fs.copyFileSync(petJsonPath, path.join(destination, "pet.json"));
+    writeInstalledPetJson(path.join(destination, "pet.json"), raw, prepared);
     fs.copyFileSync(sourceSpritesheet, destinationSpritesheet);
 
     return this.registerPetDirectory(destination);
@@ -165,42 +172,89 @@ export class PetPackService {
       throw new Error(`The zip archive does not contain ${pet.spritesheetPath}.`);
     }
 
-    const destination = await this.prepareDestination(pet.id, parent);
+    const prepared = await this.prepareDestination(pet, parent);
+    const { destination } = prepared;
     fs.rmSync(destination, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(path.join(destination, safeSpritesheetPath)), { recursive: true });
-    fs.writeFileSync(path.join(destination, "pet.json"), petEntry.getData());
+    writeInstalledPetJson(path.join(destination, "pet.json"), raw, prepared);
     fs.writeFileSync(path.join(destination, safeSpritesheetPath), spritesheetEntry.getData());
 
     return this.registerPetDirectory(destination);
   }
 
-  private async prepareDestination(petId: string, parent?: BrowserWindow): Promise<string> {
-    const id = sanitizePetId(petId);
+  private async prepareDestination(pet: PetJson, parent?: BrowserWindow): Promise<PreparedPetDestination> {
+    const id = sanitizePetId(pet.id);
+    const displayName = pet.displayName.trim();
     const destination = path.join(this.petsDirectory, id);
+    const installedPacks = this.database.getPetPacks();
+    const idCollision = installedPacks.find((pack) => pack.id === id);
+    const nameCollision = installedPacks.find(
+      (pack) => pack.displayName.localeCompare(displayName, undefined, { sensitivity: "accent" }) === 0,
+    );
+    const replacementPack = idCollision ?? nameCollision;
 
-    if (!fs.existsSync(destination)) {
-      return destination;
+    if (!fs.existsSync(destination) && !replacementPack) {
+      return { id, displayName, destination };
     }
 
     if (!parent) {
-      throw new Error(`Pet "${id}" already exists.`);
+      throw new Error(`Pet "${displayName}" already exists.`);
     }
 
     const answer = await dialog.showMessageBox(parent, {
       type: "warning",
-      buttons: ["Cancel", "Overwrite"],
-      defaultId: 0,
+      buttons: ["Cancel", "Replace", "Generate new name"],
+      defaultId: 2,
       cancelId: 0,
       title: "Pet already installed",
-      message: `The pet "${id}" is already installed.`,
-      detail: "Yumate never overwrites pet packs silently.",
+      message: `A pet named "${displayName}" is already installed.`,
+      detail: "Choose Replace to overwrite the existing pet, or Generate new name to install this pack as a separate copy.",
     });
 
-    if (answer.response !== 1) {
+    if (answer.response === 0) {
       throw new Error("Import canceled because the pet already exists.");
     }
 
-    return destination;
+    if (answer.response === 1) {
+      const replacementId = replacementPack?.id ?? id;
+      return {
+        id: replacementId,
+        displayName,
+        destination: path.join(this.petsDirectory, replacementId),
+      };
+    }
+
+    const uniqueIdentity = this.createUniquePetIdentity(id, displayName);
+    return {
+      ...uniqueIdentity,
+      destination: path.join(this.petsDirectory, uniqueIdentity.id),
+    };
+  }
+
+  private createUniquePetIdentity(baseId: string, baseDisplayName: string): Pick<PreparedPetDestination, "id" | "displayName"> {
+    const installedPacks = this.database.getPetPacks();
+    const usedIds = new Set(installedPacks.map((pack) => pack.id));
+    const usedNames = new Set(installedPacks.map((pack) => normalizeDisplayName(pack.displayName)));
+
+    if (fs.existsSync(this.petsDirectory)) {
+      for (const entry of fs.readdirSync(this.petsDirectory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          usedIds.add(entry.name);
+        }
+      }
+    }
+
+    for (let index = 2; index < 1000; index += 1) {
+      const id = sanitizePetId(`${baseId}-${index}`);
+      const displayName = `${baseDisplayName} (${index})`;
+      const idAvailable = !usedIds.has(id) && !fs.existsSync(path.join(this.petsDirectory, id));
+      const displayNameAvailable = !usedNames.has(normalizeDisplayName(displayName));
+      if (idAvailable && displayNameAvailable) {
+        return { id, displayName };
+      }
+    }
+
+    throw new Error(`Could not generate a unique name for "${baseDisplayName}".`);
   }
 
   private registerPetDirectory(directoryPath: string): InstalledPetPack {
@@ -254,4 +308,18 @@ function findPetJson(directory: string): string | null {
 
 function formatValidationError(issues: { message: string }[]): string {
   return issues.length > 0 ? issues.map((issue) => issue.message).join(" ") : "Invalid pet pack.";
+}
+
+function writeInstalledPetJson(destinationPath: string, raw: unknown, prepared: PreparedPetDestination): void {
+  const petJson = {
+    ...(raw as Record<string, unknown>),
+    id: prepared.id,
+    displayName: prepared.displayName,
+  };
+
+  fs.writeFileSync(destinationPath, `${JSON.stringify(petJson, null, 2)}\n`);
+}
+
+function normalizeDisplayName(value: string): string {
+  return value.trim().toLocaleLowerCase();
 }
