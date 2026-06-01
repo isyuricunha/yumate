@@ -6,6 +6,7 @@ import { type AppDatabase } from "./database";
 import { assertSafeRelativePath, resolveInside, sanitizePetId } from "./fileSafety";
 import { validatePetJson } from "./petValidation";
 import { type ImportPetResult, type InstalledPetPack, type PetJson } from "../shared/types";
+import { translate } from "../shared/i18n";
 
 interface PreparedPetDestination {
   id: string;
@@ -27,23 +28,24 @@ export class PetPackService {
   }
 
   async importWithDialog(parent: BrowserWindow): Promise<ImportPetResult> {
+    const locale = this.database.getGlobalSettings().locale;
     const result = await dialog.showOpenDialog(parent, {
-      title: "Import pet",
+      title: translate(locale, "petImport.title"),
       properties: ["openFile", "openDirectory"],
       filters: [
-        { name: "Pet pack", extensions: ["zip", "json"] },
-        { name: "All files", extensions: ["*"] },
+        { name: translate(locale, "petImport.filterPetPack"), extensions: ["zip", "json"] },
+        { name: translate(locale, "petImport.filterAllFiles"), extensions: ["*"] },
       ],
     });
 
     if (result.canceled || result.filePaths.length === 0) {
-      return { ok: false, error: "Import canceled." };
+      return { ok: false, error: translate(locale, "petImport.canceled") };
     }
 
     try {
       return await this.importFromPath(result.filePaths[0], parent);
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "Pet import failed." };
+      return { ok: false, error: error instanceof Error ? error.message : translate(locale, "petImport.failed") };
     }
   }
 
@@ -65,7 +67,7 @@ export class PetPackService {
       return { ok: true, pack };
     }
 
-    throw new Error("Select a pet folder, a pet.json file, or a .zip archive.");
+    throw new Error(translate(this.database.getGlobalSettings().locale, "petImport.selectValid"));
   }
 
   scanAndRegisterPets(): InstalledPetPack[] {
@@ -121,7 +123,7 @@ export class PetPackService {
   private async importFromDirectory(inputDirectory: string, parent?: BrowserWindow): Promise<InstalledPetPack> {
     const petJsonPath = findPetJson(inputDirectory);
     if (!petJsonPath) {
-      throw new Error("No pet.json was found in the selected folder.");
+      throw new Error(translate(this.database.getGlobalSettings().locale, "petImport.noPetJson"));
     }
 
     const sourceDirectory = path.dirname(petJsonPath);
@@ -151,7 +153,7 @@ export class PetPackService {
     const entries = zip.getEntries().filter((entry) => !entry.isDirectory);
     const petEntry = entries.find((entry) => path.basename(entry.entryName).toLowerCase() === "pet.json");
     if (!petEntry) {
-      throw new Error("The zip archive does not contain a pet.json file.");
+      throw new Error(translate(this.database.getGlobalSettings().locale, "petImport.zipNoPetJson"));
     }
 
     const raw = JSON.parse(petEntry.getData().toString("utf8")) as unknown;
@@ -183,6 +185,7 @@ export class PetPackService {
   }
 
   private async prepareDestination(pet: PetJson, parent?: BrowserWindow): Promise<PreparedPetDestination> {
+    const locale = this.database.getGlobalSettings().locale;
     const id = sanitizePetId(pet.id);
     const displayName = pet.displayName.trim();
     const destination = path.join(this.petsDirectory, id);
@@ -198,21 +201,25 @@ export class PetPackService {
     }
 
     if (!parent) {
-      throw new Error(`Pet "${displayName}" already exists.`);
+      throw new Error(translate(locale, "petImport.duplicateMessage", { name: displayName }));
     }
 
     const answer = await dialog.showMessageBox(parent, {
       type: "warning",
-      buttons: ["Cancel", "Replace", "Generate new name"],
+      buttons: [
+        translate(locale, "petImport.cancel"),
+        translate(locale, "petImport.replace"),
+        translate(locale, "petImport.generateName"),
+      ],
       defaultId: 2,
       cancelId: 0,
-      title: "Pet already installed",
-      message: `A pet named "${displayName}" is already installed.`,
-      detail: "Choose Replace to overwrite the existing pet, or Generate new name to install this pack as a separate copy.",
+      title: translate(locale, "petImport.duplicateTitle"),
+      message: translate(locale, "petImport.duplicateMessage", { name: displayName }),
+      detail: translate(locale, "petImport.duplicateDetail"),
     });
 
     if (answer.response === 0) {
-      throw new Error("Import canceled because the pet already exists.");
+      throw new Error(translate(locale, "petImport.duplicateCanceled"));
     }
 
     if (answer.response === 1) {
@@ -254,7 +261,7 @@ export class PetPackService {
       }
     }
 
-    throw new Error(`Could not generate a unique name for "${baseDisplayName}".`);
+    throw new Error(translate(this.database.getGlobalSettings().locale, "petImport.uniqueNameFailed", { name: baseDisplayName }));
   }
 
   private registerPetDirectory(directoryPath: string): InstalledPetPack {

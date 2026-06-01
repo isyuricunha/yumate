@@ -24,6 +24,7 @@ import {
   type SaveSettingsPayload,
   type WindowsContext,
 } from "../shared/types";
+import { translate, type TranslationKey } from "../shared/i18n";
 
 let petWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -205,7 +206,7 @@ function registerIpc(): void {
 
   ipcMain.handle("chat:send", async (_event, content: string) => {
     const instance = database.getActiveInstance();
-    setPetState("thinking", "Pensando...");
+    setPetState("thinking", t("bubble.thinking"));
     setPetState("processing");
     const result = await aiService.sendMessage(instance, content);
 
@@ -213,7 +214,7 @@ function registerIpc(): void {
       if (isInterrupted(result.error)) {
         setPetState("idle");
       } else {
-        setRecoverableErrorState(result.error ?? "Falha ao chamar IA.");
+        setRecoverableErrorState(result.error ?? t("bubble.aiFailure"));
       }
       emitSnapshot();
       return result;
@@ -363,14 +364,14 @@ function rebuildTray(): void {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: "Open chat",
+      label: t("tray.openChat"),
       click: () => {
         petWindow?.show();
         sendToRenderer("ui:toggle-chat", { open: true });
       },
     },
     {
-      label: tts.muted ? "Unmute" : "Mute",
+      label: tts.muted ? t("app.unmute") : t("app.mute"),
       click: () => {
         database.updateTtsSettings({ ...tts, muted: !tts.muted });
         emitSnapshot();
@@ -378,7 +379,7 @@ function rebuildTray(): void {
       },
     },
     {
-      label: "Stop speech",
+      label: t("tray.stopSpeech"),
       click: () => {
         ttsService.stop();
         sendToRenderer("tts:stop", {});
@@ -386,7 +387,7 @@ function rebuildTray(): void {
       },
     },
     {
-      label: petWindow?.isVisible() ? "Hide pet" : "Show pet",
+      label: petWindow?.isVisible() ? t("tray.hidePet") : t("tray.showPet"),
       click: () => {
         if (petWindow?.isVisible()) {
           petWindow.hide();
@@ -398,15 +399,15 @@ function rebuildTray(): void {
     },
     { type: "separator" },
     {
-      label: "Select active pet",
-      submenu: petItems.length > 0 ? petItems : [{ label: "No pets installed", enabled: false }],
+      label: t("tray.selectActivePet"),
+      submenu: petItems.length > 0 ? petItems : [{ label: t("tray.noPets"), enabled: false }],
     },
     {
-      label: "Select instance",
-      submenu: instanceItems.length > 0 ? instanceItems : [{ label: "No instances", enabled: false }],
+      label: t("tray.selectInstance"),
+      submenu: instanceItems.length > 0 ? instanceItems : [{ label: t("tray.noInstances"), enabled: false }],
     },
     {
-      label: "Create instance",
+      label: t("tray.createInstance"),
       click: () => {
         database.createInstance(snapshot.activeInstance.petPackId);
         moveWindowToActiveInstance();
@@ -415,7 +416,7 @@ function rebuildTray(): void {
       },
     },
     {
-      label: "Import pet",
+      label: t("tray.importPet"),
       click: async () => {
         if (petWindow) {
           await petPackService.importWithDialog(petWindow);
@@ -425,7 +426,7 @@ function rebuildTray(): void {
       },
     },
     {
-      label: "Settings",
+      label: t("app.settings"),
       click: () => {
         petWindow?.show();
         sendToRenderer("ui:open-settings", {});
@@ -433,7 +434,7 @@ function rebuildTray(): void {
     },
     { type: "separator" },
     {
-      label: "Quit",
+      label: t("tray.quit"),
       click: () => {
         isQuitting = true;
         app.quit();
@@ -495,7 +496,7 @@ function registerHotkeys(): void {
   }
 
   if (failures.length > 0) {
-    showBubble(`Nao consegui registrar: ${failures.map((item) => item.accelerator).join(", ")}`, "error", 12000);
+    showBubble(`${t("bubble.hotkeyFailure")} ${failures.map((item) => item.accelerator).join(", ")}`, "error", 12000);
   }
 }
 
@@ -694,7 +695,7 @@ async function maybeRunAutomaticAi(nextContext: WindowsContext): Promise<void> {
 
   try {
     logRuntime("auto-ai", "call=start", contextLogPayload(stableContext));
-    setPetState("thinking", "Vi uma mudanca de contexto.");
+    setPetState("thinking", t("bubble.contextChanged"));
     setPetState("processing");
     const result = await aiService.sendAutomaticContext(instance, stableContext);
 
@@ -703,7 +704,7 @@ async function maybeRunAutomaticAi(nextContext: WindowsContext): Promise<void> {
       if (isInterrupted(result.error)) {
         setPetState("idle");
       } else {
-        setRecoverableErrorState(result.error ?? "Falha na chamada automatica.");
+        setRecoverableErrorState(result.error ?? t("bubble.aiFailure"));
       }
       emitSnapshot();
       return;
@@ -845,7 +846,11 @@ function isAiBlockingState(state: BehaviorState): boolean {
 }
 
 function isInterrupted(error: string | undefined): boolean {
-  return error === "A resposta foi interrompida.";
+  return (
+    error === t("error.interrupted") ||
+    error === translate("en", "error.interrupted") ||
+    error === translate("pt-BR", "error.interrupted")
+  );
 }
 
 function contextLogPayload(context: WindowsContext): Record<string, unknown> {
@@ -870,4 +875,8 @@ function logAutomaticDisabled(settings: ReturnType<AppDatabase["getGlobalSetting
 
 function logRuntime(scope: string, event: string, payload: Record<string, unknown> = {}): void {
   console.info(`[yumate:${scope}] ${event} ${JSON.stringify(payload)}`);
+}
+
+function t(key: TranslationKey, replacements: Record<string, string | number> = {}): string {
+  return translate(database.getGlobalSettings().locale, key, replacements);
 }

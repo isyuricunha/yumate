@@ -22,6 +22,7 @@ export const behaviorStates: BehaviorState[] = [
 ];
 
 export type EffortLevel = "low" | "medium" | "high";
+export type LocaleCode = "en" | "pt-BR";
 
 export interface PetAnimation {
   row: number;
@@ -166,6 +167,7 @@ export interface WindowsContext {
 
 export interface GlobalSettings {
   theme: "system" | "light" | "dark";
+  locale: LocaleCode;
   startWithWindows: boolean;
   defaultProviderId: string;
   defaultModel: string;

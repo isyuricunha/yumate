@@ -12,6 +12,7 @@ import { PetCanvas } from "./PetCanvas";
 import { ChatPanel } from "./ChatPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { type BehaviorState } from "../../shared/types";
+import { translate, type TranslationKey } from "../../shared/i18n";
 
 export function App() {
   const { snapshot, state, setState, loadingError } = useYumate();
@@ -20,6 +21,8 @@ export function App() {
   const [bubble, setBubble] = useState<{ text: string; tone: "neutral" | "thinking" | "error" } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bubbleTimeout = useRef<number | null>(null);
+  const locale = snapshot?.settings.locale;
+  const t = (key: TranslationKey) => translate(locale, key);
 
   useEffect(() => {
     const cleanups = [
@@ -52,7 +55,7 @@ export function App() {
         audio.src = payload.audioUrl;
         audio.volume = payload.volume;
         void audio.play().catch(() => {
-          setBubble({ text: "Nao consegui tocar o audio gerado.", tone: "error" });
+          setBubble({ text: translate(locale, "app.audioError"), tone: "error" });
           void window.yumate.notifyTtsEnded();
         });
       }),
@@ -65,7 +68,7 @@ export function App() {
       }),
     ];
     return () => cleanups.forEach((cleanup) => cleanup());
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -117,7 +120,7 @@ export function App() {
   }
 
   if (!snapshot) {
-    return <div className="boot-error">Carregando...</div>;
+    return <div className="boot-error">{translate(undefined, "app.loading")}</div>;
   }
 
   const muted = snapshot.tts.muted;
@@ -151,7 +154,7 @@ export function App() {
 
   const handlePetClick = () => {
     setPetBehaviorState("clicked");
-    setBubble({ text: "Oi.", tone: "neutral" });
+    setBubble({ text: t("app.petClicked"), tone: "neutral" });
     window.setTimeout(() => {
       setPetBehaviorState("idle");
     }, 900);
@@ -164,7 +167,7 @@ export function App() {
           {bubble && !chatOpen && !settingsOpen && (
             <button
               className={`speech-bubble ${bubble.tone}`}
-              title="Open chat"
+              title={t("app.openChat")}
               type="button"
               onClick={() => setChatOpen(true)}
             >
@@ -181,19 +184,19 @@ export function App() {
         />
 
         <div className="quickbar" data-interactive="true">
-          <button title="Chat" type="button" onClick={() => setChatOpen((open) => !open)}>
+          <button title={t("app.chat")} type="button" onClick={() => setChatOpen((open) => !open)}>
             <MessageCircle size={18} />
           </button>
-          <button title={muted ? "Unmute" : "Mute"} type="button" onClick={() => saveMuted(!muted)}>
+          <button title={muted ? t("app.unmute") : t("app.mute")} type="button" onClick={() => saveMuted(!muted)}>
             {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
-          <button title="Stop speech" type="button" onClick={() => window.yumate.stopTts()}>
+          <button title={t("app.stopSpeech")} type="button" onClick={() => window.yumate.stopTts()}>
             <Square size={16} />
           </button>
-          <button title="Settings" type="button" onClick={() => setSettingsOpen((open) => !open)}>
+          <button title={t("app.settings")} type="button" onClick={() => setSettingsOpen((open) => !open)}>
             <Settings size={18} />
           </button>
-          <button title="Hide" type="button" onClick={() => window.yumate.toggleVisibility()}>
+          <button title={t("app.hide")} type="button" onClick={() => window.yumate.toggleVisibility()}>
             <X size={18} />
           </button>
         </div>

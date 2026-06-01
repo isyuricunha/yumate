@@ -19,6 +19,7 @@ import {
   type TtsSettings,
   type WindowsContext,
 } from "../shared/types";
+import { getDefaultPromptPreset, normalizeLocale } from "../shared/i18n";
 
 type SqlValue = string | number | Uint8Array | null;
 
@@ -166,7 +167,7 @@ export class AppDatabase {
     if (!row) {
       throw new Error("Global settings are missing.");
     }
-    return JSON.parse(row.value_json) as GlobalSettings;
+    return normalizeGlobalSettings(JSON.parse(row.value_json), this.petsFolderPath);
   }
 
   setGlobalSettings(settings: GlobalSettings): void {
@@ -282,6 +283,7 @@ export class AppDatabase {
 
     const createdAt = now();
     const id = randomUUID();
+    const prompts = getDefaultPromptPreset(this.getGlobalSettings().locale);
     this.run(
       `INSERT INTO pet_instances (
         id, pet_pack_id, name, x, y, monitor_id, scale, visible, persona, system_prompt,
@@ -296,8 +298,8 @@ export class AppDatabase {
         null,
         1,
         1,
-        "Companheiro visual em portugues brasileiro, casual, conciso, util e nao invasivo.",
-        "Responda em portugues brasileiro. Seja casual, conciso e util. Nao comente sobre apps, janelas ou contexto local a menos que o usuario tenha ativado e pedido isso claramente.",
+        prompts.persona,
+        prompts.systemPrompt,
         null,
         null,
         "default-openai-compatible",
@@ -515,20 +517,7 @@ export class AppDatabase {
   }
 
   private ensureDefaults(): void {
-    const defaultSettings: GlobalSettings = {
-      theme: "system",
-      startWithWindows: false,
-      defaultProviderId: "default-openai-compatible",
-      defaultModel: "gpt-4o-mini",
-      defaultEffort: "medium",
-      petsFolderPath: this.petsFolderPath,
-      clickThroughEnabled: true,
-      trayBehavior: "minimize-to-tray",
-      windowsContextEnabled: false,
-      activeWindowTitleEnabled: false,
-      chatHistoryEnabled: true,
-      automaticAiCallsEnabled: false,
-    };
+    const defaultSettings = createDefaultGlobalSettings(this.petsFolderPath);
 
     this.exec(
       `INSERT OR IGNORE INTO global_settings (key, value_json, updated_at)
@@ -831,6 +820,43 @@ function mapMessage(row: RawMessageRow): ChatMessage {
     error: row.error,
     spoken: Boolean(row.spoken),
     metadata: JSON.parse(row.metadata_json || "{}"),
+  };
+}
+
+function createDefaultGlobalSettings(petsFolderPath: string): GlobalSettings {
+  return {
+    theme: "system",
+    locale: "pt-BR",
+    startWithWindows: false,
+    defaultProviderId: "default-openai-compatible",
+    defaultModel: "gpt-4o-mini",
+    defaultEffort: "medium",
+    petsFolderPath,
+    clickThroughEnabled: true,
+    trayBehavior: "minimize-to-tray",
+    windowsContextEnabled: false,
+    activeWindowTitleEnabled: false,
+    chatHistoryEnabled: true,
+    automaticAiCallsEnabled: false,
+  };
+}
+
+function normalizeGlobalSettings(value: unknown, petsFolderPath: string): GlobalSettings {
+  const defaults = createDefaultGlobalSettings(petsFolderPath);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return defaults;
+  }
+
+  const partial = value as Partial<GlobalSettings>;
+  return {
+    ...defaults,
+    ...partial,
+    locale: normalizeLocale(partial.locale),
+    theme: partial.theme === "light" || partial.theme === "dark" || partial.theme === "system" ? partial.theme : defaults.theme,
+    trayBehavior:
+      partial.trayBehavior === "quit" || partial.trayBehavior === "minimize-to-tray"
+        ? partial.trayBehavior
+        : defaults.trayBehavior,
   };
 }
 

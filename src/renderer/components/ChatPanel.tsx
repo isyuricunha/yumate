@@ -1,6 +1,7 @@
 import { FormEvent, type PointerEvent, useRef, useState } from "react";
 import { Send, Trash2, X, Square } from "lucide-react";
 import { type AppSnapshot } from "../../shared/types";
+import { translate, type TranslationKey } from "../../shared/i18n";
 
 interface ChatPanelProps {
   snapshot: AppSnapshot;
@@ -11,6 +12,7 @@ export function ChatPanel({ snapshot, onClose }: ChatPanelProps) {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const t = (key: TranslationKey) => translate(snapshot.settings.locale, key);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -74,20 +76,20 @@ export function ChatPanel({ snapshot, onClose }: ChatPanelProps) {
       >
         <div>
           <strong>{snapshot.activeInstance.name}</strong>
-          <span>{snapshot.providers[0]?.model || "Modelo nao configurado"}</span>
+          <span>{snapshot.providers[0]?.model || t("chat.modelMissing")}</span>
         </div>
-        <button title="Close" type="button" onClick={onClose}>
+        <button title={t("settings.close")} type="button" onClick={onClose}>
           <X size={18} />
         </button>
       </header>
 
       <div className="messages">
         {snapshot.messages.length === 0 ? (
-          <p className="empty-state">Sem historico.</p>
+          <p className="empty-state">{t("chat.empty")}</p>
         ) : (
           snapshot.messages.map((chatMessage) => (
             <article key={chatMessage.id} className={`message ${chatMessage.role} ${chatMessage.status}`}>
-              <span>{chatMessage.role === "assistant" ? snapshot.activeInstance.name : "Voce"}</span>
+              <span>{chatMessage.role === "assistant" ? snapshot.activeInstance.name : t("chat.you")}</span>
               <p>{chatMessage.content}</p>
             </article>
           ))
@@ -98,17 +100,17 @@ export function ChatPanel({ snapshot, onClose }: ChatPanelProps) {
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
-          placeholder="Mensagem"
+          placeholder={t("chat.placeholder")}
           rows={2}
         />
         <div className="composer-actions">
-          <button title="Clear history" type="button" onClick={() => window.yumate.clearHistory()}>
+          <button title={t("chat.clearHistory")} type="button" onClick={() => window.yumate.clearHistory()}>
             <Trash2 size={17} />
           </button>
-          <button title="Cancel" type="button" disabled={!sending} onClick={() => window.yumate.cancelChat()}>
+          <button title={t("chat.cancel")} type="button" disabled={!sending} onClick={() => window.yumate.cancelChat()}>
             <Square size={15} />
           </button>
-          <button title="Send" type="submit" disabled={!message.trim() || sending}>
+          <button title={t("chat.send")} type="submit" disabled={!message.trim() || sending}>
             <Send size={17} />
           </button>
         </div>

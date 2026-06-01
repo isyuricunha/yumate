@@ -5,9 +5,11 @@ import {
   type AppSnapshot,
   type EffortLevel,
   type GlobalSettings,
+  type LocaleCode,
   type PetInstance,
   type TtsSettings,
 } from "../../shared/types";
+import { getDefaultPromptPreset, localeLabels, translate, type TranslationKey } from "../../shared/i18n";
 
 interface SettingsPanelProps {
   snapshot: AppSnapshot;
@@ -26,6 +28,8 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const locale = global.locale;
+  const t = (key: TranslationKey) => translate(locale, key);
 
   const validationIssues = useMemo(
     () => snapshot.activePetPack.validation.issues.map((issue) => issue.message),
@@ -50,23 +54,32 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
       hotkeys,
     });
     setSaving(false);
-    setNotice("Salvo.");
+    setNotice(t("settings.saved"));
     window.setTimeout(() => setNotice(null), 1800);
   }
 
   async function importPet() {
     const result = await window.yumate.importPet();
-    setNotice(result.ok ? "Pet importado." : result.error ?? "Importacao cancelada.");
+    setNotice(result.ok ? t("settings.petImported") : result.error ?? t("settings.importCanceled"));
   }
 
   async function createInstance() {
     await window.yumate.createInstance(snapshot.activeInstance.petPackId);
-    setNotice("Instancia criada.");
+    setNotice(t("settings.instanceCreated"));
   }
 
   async function refreshContext() {
     const context = await window.yumate.getWindowsContext();
-    setNotice(context.error ?? "Contexto atualizado.");
+    setNotice(context.error ?? t("settings.contextRefreshed"));
+  }
+
+  function resetPromptForLocale() {
+    const preset = getDefaultPromptPreset(locale);
+    setInstance({
+      ...instance,
+      persona: preset.persona,
+      systemPrompt: preset.systemPrompt,
+    });
   }
 
   function startPanelDrag(event: PointerEvent<HTMLElement>) {
@@ -115,28 +128,28 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
         onPointerUp={endPanelDrag}
       >
         <div>
-          <strong>Configuracoes</strong>
+          <strong>{t("settings.title")}</strong>
           <span>{notice ?? snapshot.activePetPack.displayName}</span>
         </div>
-        <button title="Close" type="button" onClick={onClose}>
+        <button title={t("settings.close")} type="button" onClick={onClose}>
           <X size={18} />
         </button>
       </header>
 
       <div className="tabs">
-        <button className={tab === "ai" ? "active" : ""} title="AI" type="button" onClick={() => setTab("ai")}>
+        <button className={tab === "ai" ? "active" : ""} title={t("settings.ai")} type="button" onClick={() => setTab("ai")}>
           <Bot size={17} />
         </button>
-        <button className={tab === "tts" ? "active" : ""} title="TTS" type="button" onClick={() => setTab("tts")}>
+        <button className={tab === "tts" ? "active" : ""} title={t("settings.tts")} type="button" onClick={() => setTab("tts")}>
           <Volume2 size={17} />
         </button>
-        <button className={tab === "pet" ? "active" : ""} title="Pet" type="button" onClick={() => setTab("pet")}>
+        <button className={tab === "pet" ? "active" : ""} title={t("settings.pet")} type="button" onClick={() => setTab("pet")}>
           <Settings2 size={17} />
         </button>
-        <button className={tab === "privacy" ? "active" : ""} title="Privacy" type="button" onClick={() => setTab("privacy")}>
+        <button className={tab === "privacy" ? "active" : ""} title={t("settings.privacy")} type="button" onClick={() => setTab("privacy")}>
           <Check size={17} />
         </button>
-        <button className={tab === "hotkeys" ? "active" : ""} title="Hotkeys" type="button" onClick={() => setTab("hotkeys")}>
+        <button className={tab === "hotkeys" ? "active" : ""} title={t("settings.hotkeys")} type="button" onClick={() => setTab("hotkeys")}>
           <Keyboard size={17} />
         </button>
       </div>
@@ -145,15 +158,15 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
         {tab === "ai" && (
           <fieldset>
             <label>
-              <span>Provider</span>
+              <span>{t("settings.provider")}</span>
               <input value={provider.name} onChange={(event) => setProvider({ ...provider, name: event.target.value })} />
             </label>
             <label>
-              <span>Base URL</span>
+              <span>{t("settings.baseUrl")}</span>
               <input value={provider.baseUrl} onChange={(event) => setProvider({ ...provider, baseUrl: event.target.value })} />
             </label>
             <label>
-              <span>API key</span>
+              <span>{t("settings.apiKey")}</span>
               <input
                 type="password"
                 value={provider.apiKey}
@@ -161,12 +174,12 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
               />
             </label>
             <label>
-              <span>Model</span>
+              <span>{t("settings.model")}</span>
               <input value={provider.model} onChange={(event) => setProvider({ ...provider, model: event.target.value })} />
             </label>
             <div className="grid-two">
               <label>
-                <span>Effort</span>
+                <span>{t("settings.effort")}</span>
                 <select
                   value={instance.effort}
                   onChange={(event) => setInstance({ ...instance, effort: event.target.value as EffortLevel })}
@@ -177,7 +190,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 </select>
               </label>
               <label>
-                <span>Temperature</span>
+                <span>{t("settings.temperature")}</span>
                 <input
                   type="number"
                   step="0.1"
@@ -194,7 +207,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={provider.supportsReasoning}
                 onChange={(event) => setProvider({ ...provider, supportsReasoning: event.target.checked })}
               />
-              <span>Reasoning</span>
+              <span>{t("settings.reasoning")}</span>
             </label>
             <label className="check-row">
               <input
@@ -202,7 +215,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={provider.supportsEffort}
                 onChange={(event) => setProvider({ ...provider, supportsEffort: event.target.checked })}
               />
-              <span>Effort parameter</span>
+              <span>{t("settings.effortParameter")}</span>
             </label>
           </fieldset>
         )}
@@ -210,21 +223,21 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
         {tab === "tts" && (
           <fieldset>
             <label>
-              <span>Voice</span>
+              <span>{t("settings.voice")}</span>
               <input value={tts.voice} onChange={(event) => setTts({ ...tts, voice: event.target.value })} />
             </label>
             <div className="grid-two">
               <label>
-                <span>Rate</span>
+                <span>{t("settings.rate")}</span>
                 <input value={tts.rate} onChange={(event) => setTts({ ...tts, rate: event.target.value })} />
               </label>
               <label>
-                <span>Pitch</span>
+                <span>{t("settings.pitch")}</span>
                 <input value={tts.pitch} onChange={(event) => setTts({ ...tts, pitch: event.target.value })} />
               </label>
             </div>
             <label>
-              <span>Volume</span>
+              <span>{t("settings.volume")}</span>
               <input
                 type="range"
                 min="0"
@@ -236,7 +249,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
             </label>
             <label className="check-row">
               <input type="checkbox" checked={tts.muted} onChange={(event) => setTts({ ...tts, muted: event.target.checked })} />
-              <span>Mute</span>
+              <span>{t("settings.mute")}</span>
             </label>
             <label className="check-row">
               <input
@@ -244,7 +257,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={instance.ttsEnabled}
                 onChange={(event) => setInstance({ ...instance, ttsEnabled: event.target.checked })}
               />
-              <span>TTS per instance</span>
+              <span>{t("settings.ttsPerInstance")}</span>
             </label>
           </fieldset>
         )}
@@ -252,11 +265,11 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
         {tab === "pet" && (
           <fieldset>
             <label>
-              <span>Name</span>
+              <span>{t("settings.name")}</span>
               <input value={instance.name} onChange={(event) => setInstance({ ...instance, name: event.target.value })} />
             </label>
             <label>
-              <span>Scale</span>
+              <span>{t("settings.scale")}</span>
               <input
                 type="range"
                 min="0.5"
@@ -267,19 +280,23 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
               />
             </label>
             <label>
-              <span>Persona</span>
+              <span>{t("settings.persona")}</span>
               <textarea value={instance.persona} onChange={(event) => setInstance({ ...instance, persona: event.target.value })} rows={3} />
             </label>
             <label>
-              <span>System prompt</span>
+              <span>{t("settings.systemPrompt")}</span>
               <textarea
                 value={instance.systemPrompt}
                 onChange={(event) => setInstance({ ...instance, systemPrompt: event.target.value })}
                 rows={5}
               />
             </label>
+            <button className="wide-command" type="button" onClick={resetPromptForLocale}>
+              <RefreshCw size={17} />
+              <span>{t("settings.resetPrompt")}</span>
+            </button>
             <label>
-              <span>Model override</span>
+              <span>{t("settings.modelOverride")}</span>
               <input
                 placeholder={provider.model}
                 value={instance.model ?? ""}
@@ -287,7 +304,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
               />
             </label>
             <label>
-              <span>Voice override</span>
+              <span>{t("settings.voiceOverride")}</span>
               <input
                 placeholder={tts.voice}
                 value={instance.voice ?? ""}
@@ -300,7 +317,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={instance.movementEnabled}
                 onChange={(event) => setInstance({ ...instance, movementEnabled: event.target.checked })}
               />
-              <span>Automatic movement</span>
+              <span>{t("settings.automaticMovement")}</span>
             </label>
             <div className="pet-list">
               {snapshot.instances.map((item) => (
@@ -317,7 +334,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
             </div>
             <button className="wide-command" type="button" onClick={createInstance}>
               <Plus size={17} />
-              <span>Instance</span>
+              <span>{t("settings.instance")}</span>
             </button>
             <div className="pet-list">
               {snapshot.petPacks.map((pack) => (
@@ -329,38 +346,51 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                   onClick={() => window.yumate.selectPet(pack.id)}
                 >
                   <span>{pack.displayName}</span>
-                  <small>{pack.valid ? "valid" : "invalid"}</small>
+                  <small>{pack.valid ? t("settings.valid") : t("settings.invalid")}</small>
                 </button>
               ))}
             </div>
             {validationIssues.length > 0 && <p className="inline-error">{validationIssues.join(" ")}</p>}
             <button className="wide-command" type="button" onClick={importPet}>
               <FolderPlus size={17} />
-              <span>Import</span>
+              <span>{t("settings.import")}</span>
             </button>
           </fieldset>
         )}
 
         {tab === "privacy" && (
           <fieldset>
+            <label>
+              <span>{t("settings.language")}</span>
+              <select
+                value={global.locale}
+                onChange={(event) => setGlobal({ ...global, locale: event.target.value as LocaleCode })}
+              >
+                {(Object.entries(localeLabels) as Array<[LocaleCode, string]>).map(([code, label]) => (
+                  <option key={code} value={code}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="check-row">
               <input
                 type="checkbox"
                 checked={global.startWithWindows}
                 onChange={(event) => setGlobal({ ...global, startWithWindows: event.target.checked })}
               />
-              <span>Start with Windows</span>
+              <span>{t("settings.startWithWindows")}</span>
             </label>
             <label>
-              <span>Tray behavior</span>
+              <span>{t("settings.trayBehavior")}</span>
               <select
                 value={global.trayBehavior}
                 onChange={(event) =>
                   setGlobal({ ...global, trayBehavior: event.target.value as GlobalSettings["trayBehavior"] })
                 }
               >
-                <option value="minimize-to-tray">Minimize to tray</option>
-                <option value="quit">Quit on close</option>
+                <option value="minimize-to-tray">{t("settings.minimizeToTray")}</option>
+                <option value="quit">{t("settings.quitOnClose")}</option>
               </select>
             </label>
             <label className="check-row">
@@ -369,7 +399,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={global.clickThroughEnabled}
                 onChange={(event) => setGlobal({ ...global, clickThroughEnabled: event.target.checked })}
               />
-              <span>Click-through</span>
+              <span>{t("settings.clickThrough")}</span>
             </label>
             <label className="check-row">
               <input
@@ -377,7 +407,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={global.windowsContextEnabled}
                 onChange={(event) => setGlobal({ ...global, windowsContextEnabled: event.target.checked })}
               />
-              <span>Windows context</span>
+              <span>{t("settings.windowsContext")}</span>
             </label>
             <label className="check-row">
               <input
@@ -385,7 +415,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={global.activeWindowTitleEnabled}
                 onChange={(event) => setGlobal({ ...global, activeWindowTitleEnabled: event.target.checked })}
               />
-              <span>Active window title</span>
+              <span>{t("settings.activeWindowTitle")}</span>
             </label>
             <label className="check-row">
               <input
@@ -393,7 +423,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={global.chatHistoryEnabled}
                 onChange={(event) => setGlobal({ ...global, chatHistoryEnabled: event.target.checked })}
               />
-              <span>Chat history</span>
+              <span>{t("settings.chatHistory")}</span>
             </label>
             <label className="check-row">
               <input
@@ -401,19 +431,19 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
                 checked={global.automaticAiCallsEnabled}
                 onChange={(event) => setGlobal({ ...global, automaticAiCallsEnabled: event.target.checked })}
               />
-              <span>Automatic AI calls</span>
+              <span>{t("settings.automaticAiCalls")}</span>
             </label>
             <div className="context-status">
-              <span>{snapshot.windowsContext.enabled ? "Context enabled" : "Context disabled"}</span>
+              <span>{snapshot.windowsContext.enabled ? t("settings.contextEnabled") : t("settings.contextDisabled")}</span>
               <small>
                 {snapshot.windowsContext.error ??
                   snapshot.windowsContext.activeProcessName ??
-                  "No active window context captured."}
+                  t("settings.noContext")}
               </small>
             </div>
             <button className="wide-command" type="button" onClick={refreshContext}>
               <RefreshCw size={17} />
-              <span>Refresh context</span>
+              <span>{t("settings.refreshContext")}</span>
             </button>
           </fieldset>
         )}
@@ -455,7 +485,7 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
       <footer className="panel-footer">
         <button type="button" disabled={saving} onClick={save}>
           <Check size={17} />
-          <span>{saving ? "Saving" : "Save"}</span>
+          <span>{saving ? t("settings.saving") : t("settings.save")}</span>
         </button>
       </footer>
     </section>

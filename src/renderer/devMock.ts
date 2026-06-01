@@ -4,6 +4,7 @@ import {
   type RendererEventMap,
 } from "../shared/types";
 import { type YumateApi } from "../preload/global";
+import { getDefaultPromptPreset, translate } from "../shared/i18n";
 
 export function installDevMock(): void {
   if (!import.meta.env.DEV || window.yumate) {
@@ -46,7 +47,11 @@ export function installDevMock(): void {
         ...snapshot,
         messages: [...snapshot.messages, userMessage, assistantMessage],
       };
-      emit("state:changed", { instanceId: snapshot.activeInstance.id, state: "thinking", bubble: "Pensando..." });
+      emit("state:changed", {
+        instanceId: snapshot.activeInstance.id,
+        state: "thinking",
+        bubble: translate(snapshot.settings.locale, "bubble.thinking"),
+      });
       window.setTimeout(() => emit("state:changed", { instanceId: snapshot.activeInstance.id, state: "speaking" }), 500);
       window.setTimeout(() => emit("state:changed", { instanceId: snapshot.activeInstance.id, state: "idle" }), 1800);
       emit("snapshot:changed", snapshot);
@@ -62,7 +67,7 @@ export function installDevMock(): void {
       return snapshot;
     },
     async importPet() {
-      return { ok: false, error: "Import is available in Electron." };
+      return { ok: false, error: translate(snapshot.settings.locale, "petImport.failed") };
     },
     async selectPet() {
       return snapshot;
@@ -126,9 +131,11 @@ export function installDevMock(): void {
 
 function createSnapshot(): AppSnapshot {
   const now = new Date().toISOString();
+  const prompts = getDefaultPromptPreset("pt-BR");
   return {
     settings: {
       theme: "system",
+      locale: "pt-BR",
       startWithWindows: false,
       defaultProviderId: "default-openai-compatible",
       defaultModel: "gpt-4o-mini",
@@ -176,8 +183,8 @@ function createSnapshot(): AppSnapshot {
         monitorId: null,
         scale: 1,
         visible: true,
-        persona: "Companheiro visual em portugues brasileiro.",
-        systemPrompt: "Responda em portugues brasileiro. Seja casual, conciso e util.",
+        persona: prompts.persona,
+        systemPrompt: prompts.systemPrompt,
         voice: null,
         model: null,
         providerId: "default-openai-compatible",
@@ -198,8 +205,8 @@ function createSnapshot(): AppSnapshot {
       monitorId: null,
       scale: 1,
       visible: true,
-      persona: "Companheiro visual em portugues brasileiro.",
-      systemPrompt: "Responda em portugues brasileiro. Seja casual, conciso e util.",
+      persona: prompts.persona,
+      systemPrompt: prompts.systemPrompt,
       voice: null,
       model: null,
       providerId: "default-openai-compatible",

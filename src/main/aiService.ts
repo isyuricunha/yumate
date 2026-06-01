@@ -4,10 +4,17 @@ import { type WindowsContextService } from "./windowsContextService";
 import {
   type AiProvider,
   type ChatMessage,
+  type LocaleCode,
   type PetInstance,
   type SendMessageResult,
   type WindowsContext,
 } from "../shared/types";
+import {
+  formatAutomaticContextUserMessage as formatLocalizedAutomaticContextUserMessage,
+  formatWindowsContextForPrompt,
+  getDefaultPromptPreset,
+  translate,
+} from "../shared/i18n";
 
 interface ChatCompletionResponse {
   choices?: Array<{
@@ -41,7 +48,8 @@ export class AiService {
     const conversation = this.database.ensureConversation(instance.id);
     const provider = this.database.getProvider(instance.providerId);
     const model = instance.model || provider.model;
-    const persistHistory = this.database.getGlobalSettings().chatHistoryEnabled;
+    const settings = this.database.getGlobalSettings();
+    const persistHistory = settings.chatHistoryEnabled;
 
     const userMessage = {
       conversationId: conversation.id,
@@ -79,7 +87,7 @@ export class AiService {
         : createTransientMessage(assistantMessageInput);
       return { ok: true, assistantMessage };
     } catch (error) {
-      const friendly = formatProviderError(error);
+      const friendly = formatProviderError(error, settings.locale);
       const assistantMessage = {
         conversationId: conversation.id,
         role: "assistant",
@@ -102,8 +110,9 @@ export class AiService {
     const conversation = this.database.ensureConversation(instance.id);
     const provider = this.database.getProvider(instance.providerId);
     const model = instance.model || provider.model;
-    const content = formatAutomaticContextUserMessage(context);
-    const persistHistory = this.database.getGlobalSettings().chatHistoryEnabled;
+    const settings = this.database.getGlobalSettings();
+    const content = formatLocalizedAutomaticContextUserMessage(context, settings.locale);
+    const persistHistory = settings.chatHistoryEnabled;
 
     const userMessage = {
       conversationId: conversation.id,
@@ -132,8 +141,7 @@ export class AiService {
         includeHistory: false,
         maxTokens: 120,
         timeoutMs: 30_000,
-        systemAddendum:
-          "Chamadas automaticas foram ativadas pelo usuario. Analise o contexto local autorizado e responda em portugues brasileiro com no maximo uma frase curta, util e nao invasiva. Quando o contexto mudou para um app, site ou titulo reconhecivel, ofereca ajuda curta relacionada ao que esta visivel. Responda exatamente [silent] apenas se o contexto estiver vazio, for o proprio Yumate, for uma tela transitoria de troca de tarefas, ou for claramente repetido/sem utilidade. Nao invente detalhes que nao estejam no contexto.",
+        systemAddendum: getDefaultPromptPreset(settings.locale).automaticSystemAddendum,
       });
 
       if (isSilentResponse(responseText)) {
@@ -159,7 +167,7 @@ export class AiService {
         : createTransientMessage(assistantMessageInput);
       return { ok: true, assistantMessage };
     } catch (error) {
-      const friendly = formatProviderError(error);
+      const friendly = formatProviderError(error, settings.locale);
       const assistantMessage = {
         conversationId: conversation.id,
         role: "assistant",
@@ -195,17 +203,18 @@ export class AiService {
     },
   ): Promise<string> {
     const baseUrl = provider.baseUrl.replace(/\/+$/, "");
+    const settings = this.database.getGlobalSettings();
     if (!baseUrl) {
-      throw new Error("Configure an OpenAI-compatible base URL before chatting.");
+      throw new Error(translate(settings.locale, "error.configureBaseUrl"));
     }
 
     if (!provider.apiKey && !isLocalEndpoint(baseUrl)) {
-      throw new Error("Configure an API key or use a local endpoint before chatting.");
+      throw new Error(translate(settings.locale, "error.configureApiKey"));
     }
 
     const snapshot = this.database.getSnapshot();
     const windowsContext = options.context ?? (await this.windowsContextService.capture(snapshot.settings));
-    const contextMessage = formatWindowsContext(windowsContext);
+    const contextMessage = formatWindowsContextForPrompt(windowsContext, snapshot.settings.locale);
     const includeHistory = options.includeHistory !== false && snapshot.settings.chatHistoryEnabled;
     const recentMessages =
       !includeHistory
@@ -272,7 +281,7 @@ export class AiService {
       });
     } catch (error) {
       if (timedOut) {
-        throw new Error(`A chamada de IA excedeu ${Math.round(timeoutMs / 1000)}s e foi cancelada.`);
+        throw new Error(translate(settings.locale, "error.timeout", { seconds: Math.round(timeoutMs / 1000) }));
       }
       throw error;
     } finally {
@@ -295,7 +304,7 @@ export class AiService {
 
     const message = normalizeAssistantContent(data?.choices?.[0]?.message?.content ?? data?.output_text);
     if (!message) {
-      throw new Error("The provider returned no assistant message.");
+      throw new Error(translate(settings.locale, "error.emptyProviderMessage"));
     }
 
     return message.trim();
@@ -306,14 +315,14 @@ function isLocalEndpoint(baseUrl: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(baseUrl);
 }
 
-function formatProviderError(error: unknown): string {
+function formatProviderError(error: unknown, locale: LocaleCode): string {
   if (error instanceof Error) {
     if (error.name === "AbortError") {
-      return "A resposta foi interrompida.";
+      return translate(locale, "error.interrupted");
     }
     return error.message;
   }
-  return "Falha ao chamar o provedor de IA.";
+  return translate(locale, "error.providerFallback");
 }
 
 function createTransientMessage(input: Omit<ChatMessage, "id" | "createdAt">): ChatMessage {
@@ -347,34 +356,6 @@ function normalizeAssistantContent(value: unknown): string | null {
   }
 
   return null;
-}
-
-function formatWindowsContext(context: Awaited<ReturnType<WindowsContextService["capture"]>>): string | null {
-  if (!context.enabled || context.error) {
-    return null;
-  }
-
-  const parts = [
-    context.activeProcessName ? `processo ativo: ${context.activeProcessName}` : null,
-    context.activeWindowTitle ? `titulo da janela ativa: ${context.activeWindowTitle}` : null,
-    context.capturedAt ? `capturado em: ${context.capturedAt}` : null,
-  ].filter(Boolean);
-
-  if (parts.length === 0) {
-    return null;
-  }
-
-  return `Contexto local autorizado pelo usuario. Use apenas se for relevante: ${parts.join("; ")}.`;
-}
-
-function formatAutomaticContextUserMessage(context: WindowsContext): string {
-  const parts = [
-    context.activeProcessName ? `processo ativo: ${context.activeProcessName}` : null,
-    context.activeWindowTitle ? `titulo da janela ativa: ${context.activeWindowTitle}` : null,
-    context.capturedAt ? `capturado em: ${context.capturedAt}` : null,
-  ].filter(Boolean);
-
-  return `Contexto local mudou. ${parts.join("; ")}.`;
 }
 
 function isSilentResponse(text: string): boolean {
