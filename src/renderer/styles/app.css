@@ -173,6 +173,7 @@ button:disabled {
 }
 
 .pet-layer:hover .quickbar,
+.pet-layer.controls-visible .quickbar,
 .pet-layer:focus-within .quickbar,
 .quickbar:focus-within {
   border-color: var(--border-default);

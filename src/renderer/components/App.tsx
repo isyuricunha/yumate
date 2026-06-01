@@ -18,9 +18,11 @@ export function App() {
   const { snapshot, state, setState, loadingError } = useYumate();
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(false);
   const [bubble, setBubble] = useState<{ text: string; tone: "neutral" | "thinking" | "error" } | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const bubbleTimeout = useRef<number | null>(null);
+  const controlsTimeout = useRef<number | null>(null);
   const locale = snapshot?.settings.locale;
   const t = (key: TranslationKey) => translate(locale, key);
 
@@ -90,6 +92,14 @@ export function App() {
   }, [snapshot?.settings.clickThroughEnabled]);
 
   useEffect(() => {
+    return () => {
+      if (controlsTimeout.current) {
+        window.clearTimeout(controlsTimeout.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     void window.yumate.setPanelState({ chatOpen, settingsOpen });
   }, [chatOpen, settingsOpen]);
 
@@ -153,6 +163,7 @@ export function App() {
   };
 
   const handlePetClick = () => {
+    setControlsVisible(true);
     setPetBehaviorState("clicked");
     setBubble({ text: t("app.petClicked"), tone: "neutral" });
     window.setTimeout(() => {
@@ -160,9 +171,29 @@ export function App() {
     }, 900);
   };
 
+  const showControls = () => {
+    if (controlsTimeout.current) {
+      window.clearTimeout(controlsTimeout.current);
+      controlsTimeout.current = null;
+    }
+    setControlsVisible(true);
+  };
+
+  const hideControlsSoon = () => {
+    if (controlsTimeout.current) {
+      window.clearTimeout(controlsTimeout.current);
+    }
+    controlsTimeout.current = window.setTimeout(() => setControlsVisible(false), 220);
+  };
+
   return (
     <main className="window-shell">
-      <section className="pet-layer">
+      <section
+        className={`pet-layer ${controlsVisible ? "controls-visible" : ""}`}
+        onPointerEnter={showControls}
+        onPointerLeave={hideControlsSoon}
+        onPointerMove={showControls}
+      >
         <div className="bubble-row" data-interactive="true">
           {bubble && !chatOpen && !settingsOpen && (
             <button
