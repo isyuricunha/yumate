@@ -1,0 +1,35 @@
+import {
+  type AppSnapshot,
+  type BehaviorState,
+  type ImportPetResult,
+  type RendererEventMap,
+  type SaveSettingsPayload,
+  type SendMessageResult,
+} from "../shared/types";
+
+export interface YumateApi {
+  getSnapshot(): Promise<AppSnapshot>;
+  saveSettings(payload: SaveSettingsPayload): Promise<AppSnapshot>;
+  sendMessage(content: string): Promise<SendMessageResult>;
+  cancelChat(): Promise<void>;
+  clearHistory(): Promise<AppSnapshot>;
+  importPet(): Promise<ImportPetResult>;
+  selectPet(petPackId: string): Promise<AppSnapshot>;
+  setPetState(state: BehaviorState): Promise<void>;
+  setClickThrough(ignore: boolean): Promise<void>;
+  moveWindowBy(delta: { x: number; y: number }): Promise<void>;
+  saveWindowPosition(): Promise<void>;
+  toggleVisibility(): Promise<void>;
+  stopTts(): Promise<void>;
+  notifyTtsEnded(): Promise<void>;
+  on<T extends keyof RendererEventMap>(
+    channel: T,
+    callback: (payload: RendererEventMap[T]) => void,
+  ): () => void;
+}
+
+declare global {
+  interface Window {
+    yumate: YumateApi;
+  }
+}
