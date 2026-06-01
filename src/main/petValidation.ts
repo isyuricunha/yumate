@@ -8,6 +8,7 @@ import {
   type PetJson,
   type PetValidationIssue,
   type PetValidationResult,
+  type TwoDPetMetadata,
 } from "../shared/types";
 import { assertSafeRelativePath, sanitizePetId } from "./fileSafety";
 
@@ -32,12 +33,30 @@ const desktopPetSchema = z.object({
   stateMap: z.record(z.string()).default({}),
 });
 
+const twoDMotionSchema = z.object({
+  bobPixels: z.number().min(0).max(80).optional(),
+  bobSeconds: z.number().positive().max(30).optional(),
+  breatheScale: z.number().min(0).max(0.25).optional(),
+  swayDegrees: z.number().min(0).max(20).optional(),
+});
+
+const twoDPetSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  imagePath: z.string().min(1).optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  idleMotion: twoDMotionSchema.optional(),
+  speakingMotion: twoDMotionSchema.optional(),
+  stateMotions: z.record(twoDMotionSchema).default({}),
+});
+
 const petJsonSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
   description: z.string().default(""),
   spritesheetPath: z.string().min(1),
   desktopPet: desktopPetSchema.optional(),
+  twoD: twoDPetSchema.optional(),
 });
 
 export function parsePetJson(raw: unknown): PetJson {
@@ -46,6 +65,7 @@ export function parsePetJson(raw: unknown): PetJson {
     ...parsed,
     id: sanitizePetId(parsed.id),
     desktopPet: parsed.desktopPet as DesktopPetMetadata | undefined,
+    twoD: parsed.twoD as TwoDPetMetadata | undefined,
   };
 }
 
@@ -95,14 +115,18 @@ export function validatePetJson(raw: unknown, baseDirectory?: string): { pet: Pe
     }
   }
 
-  if (!pet.desktopPet) {
+  if (!pet.desktopPet && !pet.twoD) {
     warnings.push({
       code: "desktop-pet-metadata-missing",
-      message: "desktopPet metadata is missing. The pet is Codex/Open Pet compatible but needs controlled fallbacks.",
+      message: "desktopPet and twoD metadata are missing. The pet needs controlled renderer fallbacks.",
       path: "desktopPet",
     });
-  } else {
+  } else if (pet.desktopPet) {
     validateDesktopPetMetadata(pet.desktopPet, issues);
+  }
+
+  if (pet.twoD) {
+    validateTwoDPetMetadata(pet.twoD, pet.spritesheetPath, baseDirectory, issues);
   }
 
   return {
@@ -113,6 +137,47 @@ export function validatePetJson(raw: unknown, baseDirectory?: string): { pet: Pe
       warnings,
     },
   };
+}
+
+export function validateTwoDPetMetadata(
+  metadata: TwoDPetMetadata,
+  fallbackImagePath: string,
+  baseDirectory: string | undefined,
+  issues: PetValidationIssue[],
+): void {
+  const imagePath = metadata.imagePath ?? fallbackImagePath;
+
+  try {
+    assertSafeRelativePath(imagePath);
+  } catch (error) {
+    issues.push({
+      code: "unsafe-two-d-image-path",
+      message: error instanceof Error ? error.message : "twoD.imagePath is unsafe.",
+      path: "twoD.imagePath",
+    });
+    return;
+  }
+
+  for (const state of Object.keys(metadata.stateMotions ?? {})) {
+    if (!behaviorStateSet.has(state as BehaviorState)) {
+      issues.push({
+        code: "unknown-two-d-state",
+        message: `twoD.stateMotions contains unsupported state "${state}".`,
+        path: `twoD.stateMotions.${state}`,
+      });
+    }
+  }
+
+  if (baseDirectory && issues.length === 0) {
+    const resolved = path.resolve(baseDirectory, imagePath);
+    if (!fs.existsSync(resolved)) {
+      issues.push({
+        code: "two-d-image-not-found",
+        message: `2D image was not found at ${imagePath}.`,
+        path: "twoD.imagePath",
+      });
+    }
+  }
 }
 
 export function validateDesktopPetMetadata(metadata: DesktopPetMetadata, issues: PetValidationIssue[]): void {

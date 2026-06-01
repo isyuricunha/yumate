@@ -138,12 +138,13 @@ export class PetPackService {
     fs.rmSync(destination, { recursive: true, force: true });
     fs.mkdirSync(destination, { recursive: true });
 
-    const safeSpritesheetPath = assertSafeRelativePath(pet.spritesheetPath);
-    const sourceSpritesheet = resolveInside(sourceDirectory, safeSpritesheetPath);
-    const destinationSpritesheet = path.join(destination, safeSpritesheetPath);
-    fs.mkdirSync(path.dirname(destinationSpritesheet), { recursive: true });
     writeInstalledPetJson(path.join(destination, "pet.json"), raw, prepared);
-    fs.copyFileSync(sourceSpritesheet, destinationSpritesheet);
+    for (const safeAssetPath of collectPetAssetPaths(pet)) {
+      const sourceAsset = resolveInside(sourceDirectory, safeAssetPath);
+      const destinationAsset = path.join(destination, safeAssetPath);
+      fs.mkdirSync(path.dirname(destinationAsset), { recursive: true });
+      fs.copyFileSync(sourceAsset, destinationAsset);
+    }
 
     return this.registerPetDirectory(destination);
   }
@@ -163,23 +164,26 @@ export class PetPackService {
     }
 
     const petJsonDirectory = path.posix.dirname(petEntry.entryName.replace(/\\/g, "/"));
-    const safeSpritesheetPath = assertSafeRelativePath(pet.spritesheetPath);
-    const spritesheetEntryName =
-      petJsonDirectory === "."
-        ? safeSpritesheetPath
-        : `${petJsonDirectory}/${safeSpritesheetPath}`.replace(/\\/g, "/");
-    const spritesheetEntry = entries.find((entry) => entry.entryName.replace(/\\/g, "/") === spritesheetEntryName);
-
-    if (!spritesheetEntry) {
-      throw new Error(`The zip archive does not contain ${pet.spritesheetPath}.`);
-    }
-
     const prepared = await this.prepareDestination(pet, parent);
     const { destination } = prepared;
     fs.rmSync(destination, { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(path.join(destination, safeSpritesheetPath)), { recursive: true });
     writeInstalledPetJson(path.join(destination, "pet.json"), raw, prepared);
-    fs.writeFileSync(path.join(destination, safeSpritesheetPath), spritesheetEntry.getData());
+
+    const zipEntriesByName = new Map(entries.map((entry) => [entry.entryName.replace(/\\/g, "/"), entry]));
+    for (const safeAssetPath of collectPetAssetPaths(pet)) {
+      const entryName =
+        petJsonDirectory === "."
+          ? safeAssetPath
+          : `${petJsonDirectory}/${safeAssetPath}`.replace(/\\/g, "/");
+      const assetEntry = zipEntriesByName.get(entryName);
+      if (!assetEntry) {
+        throw new Error(`The zip archive does not contain ${safeAssetPath}.`);
+      }
+
+      const destinationAsset = path.join(destination, safeAssetPath);
+      fs.mkdirSync(path.dirname(destinationAsset), { recursive: true });
+      fs.writeFileSync(destinationAsset, assetEntry.getData());
+    }
 
     return this.registerPetDirectory(destination);
   }
@@ -280,6 +284,8 @@ export class PetPackService {
       petJsonPath,
       spritesheetPath,
       metadata: pet?.desktopPet ?? null,
+      twoD: pet?.twoD ?? null,
+      twoDImagePath: pet?.twoD ? path.join(directoryPath, pet.twoD.imagePath ?? pet.spritesheetPath) : null,
       valid: validation.valid,
       validation,
       installedAt: timestamp,
@@ -325,6 +331,15 @@ function writeInstalledPetJson(destinationPath: string, raw: unknown, prepared: 
   };
 
   fs.writeFileSync(destinationPath, `${JSON.stringify(petJson, null, 2)}\n`);
+}
+
+function collectPetAssetPaths(pet: PetJson): string[] {
+  const assets = new Set<string>();
+  assets.add(assertSafeRelativePath(pet.spritesheetPath));
+  if (pet.twoD?.imagePath) {
+    assets.add(assertSafeRelativePath(pet.twoD.imagePath));
+  }
+  return [...assets];
 }
 
 function normalizeDisplayName(value: string): string {

@@ -43,12 +43,30 @@ export interface DesktopPetMetadata {
   stateMap: Partial<Record<BehaviorState, string>>;
 }
 
+export interface TwoDPetMotion {
+  bobPixels?: number;
+  bobSeconds?: number;
+  breatheScale?: number;
+  swayDegrees?: number;
+}
+
+export interface TwoDPetMetadata {
+  schemaVersion: number;
+  imagePath?: string;
+  width?: number;
+  height?: number;
+  idleMotion?: TwoDPetMotion;
+  speakingMotion?: TwoDPetMotion;
+  stateMotions?: Partial<Record<BehaviorState, TwoDPetMotion>>;
+}
+
 export interface PetJson {
   id: string;
   displayName: string;
   description: string;
   spritesheetPath: string;
   desktopPet?: DesktopPetMetadata;
+  twoD?: TwoDPetMetadata;
 }
 
 export interface PetValidationIssue {
@@ -71,6 +89,8 @@ export interface InstalledPetPack {
   petJsonPath: string;
   spritesheetPath: string;
   metadata: DesktopPetMetadata | null;
+  twoD: TwoDPetMetadata | null;
+  twoDImagePath: string | null;
   valid: boolean;
   validation: PetValidationResult;
   installedAt: string;

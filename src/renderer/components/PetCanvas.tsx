@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
-import { type BehaviorState, type DesktopPetMetadata, type InstalledPetPack, type PetAnimation } from "../../shared/types";
+import {
+  type BehaviorState,
+  type DesktopPetMetadata,
+  type InstalledPetPack,
+  type PetAnimation,
+  type TwoDPetMetadata,
+  type TwoDPetMotion,
+} from "../../shared/types";
 
 interface PetCanvasProps {
   pack: InstalledPetPack;
@@ -12,19 +19,22 @@ export function PetCanvas({ pack, state, scale, onClick }: PetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const metadataRef = useRef<DesktopPetMetadata | null>(pack.metadata);
-  metadataRef.current = pack.metadata;
+  const desktopMetadataRef = useRef<DesktopPetMetadata | null>(pack.metadata);
+  const twoDMetadataRef = useRef<TwoDPetMetadata | null>(pack.twoD);
+  desktopMetadataRef.current = pack.metadata;
+  twoDMetadataRef.current = pack.twoD;
 
-  const spriteUrl = useMemo(() => toFileUrl(pack.spritesheetPath), [pack.spritesheetPath]);
+  const assetPath = pack.twoDImagePath ?? pack.spritesheetPath;
+  const petUrl = useMemo(() => toFileUrl(assetPath), [assetPath]);
 
   useEffect(() => {
     const image = new Image();
-    image.src = spriteUrl;
+    image.src = petUrl;
     imageRef.current = image;
     return () => {
       imageRef.current = null;
     };
-  }, [spriteUrl]);
+  }, [petUrl]);
 
   useEffect(() => {
     let frameId = 0;
@@ -38,42 +48,26 @@ export function PetCanvas({ pack, state, scale, onClick }: PetCanvasProps) {
         return;
       }
 
-      const metadata = metadataRef.current ?? inferMetadata(image);
-      const animationName = resolveAnimation(metadata, state);
-      const animation = metadata.animations[animationName] ?? metadata.animations.idle ?? firstAnimation(metadata);
-      const frameWidth = metadata.frameWidth;
-      const frameHeight = metadata.frameHeight;
-      const targetWidth = Math.round(frameWidth * scale);
-      const targetHeight = Math.round(frameHeight * scale);
-
-      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        canvas.style.width = `${targetWidth}px`;
-        canvas.style.height = `${targetHeight}px`;
-      }
-
       const context = canvas.getContext("2d");
-      if (!context || !animation) {
+      if (!context) {
         frameId = requestAnimationFrame(draw);
         return;
       }
 
       const elapsed = Math.max(0, time - startedAt) / 1000;
-      const frame = getFrame(animation, elapsed);
-      const sourceX = ((animation.startFrame ?? 0) + frame) * frameWidth;
-      const sourceY = animation.row * frameHeight;
-
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      context.imageSmoothingEnabled = false;
-      context.drawImage(image, sourceX, sourceY, frameWidth, frameHeight, 0, 0, targetWidth, targetHeight);
+      const twoDMetadata = twoDMetadataRef.current;
+      if (twoDMetadata) {
+        drawTwoDPet(canvas, context, image, twoDMetadata, state, scale, elapsed);
+      } else {
+        drawSpritePet(canvas, context, image, desktopMetadataRef.current, state, scale, elapsed);
+      }
 
       frameId = requestAnimationFrame(draw);
     };
 
     frameId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frameId);
-  }, [pack.metadata, scale, state]);
+  }, [pack.metadata, pack.twoD, scale, state]);
 
   return (
     <canvas
@@ -108,6 +102,111 @@ export function PetCanvas({ pack, state, scale, onClick }: PetCanvasProps) {
       }}
     />
   );
+}
+
+function drawSpritePet(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  metadataFromPack: DesktopPetMetadata | null,
+  state: BehaviorState,
+  scale: number,
+  elapsedSeconds: number,
+): void {
+  const metadata = metadataFromPack ?? inferMetadata(image);
+  const animationName = resolveAnimation(metadata, state);
+  const animation = metadata.animations[animationName] ?? metadata.animations.idle ?? firstAnimation(metadata);
+  if (!animation) {
+    return;
+  }
+
+  const frameWidth = metadata.frameWidth;
+  const frameHeight = metadata.frameHeight;
+  const targetWidth = Math.round(frameWidth * scale);
+  const targetHeight = Math.round(frameHeight * scale);
+  setCanvasSize(canvas, targetWidth, targetHeight);
+
+  const frame = getFrame(animation, elapsedSeconds);
+  const sourceX = ((animation.startFrame ?? 0) + frame) * frameWidth;
+  const sourceY = animation.row * frameHeight;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, sourceX, sourceY, frameWidth, frameHeight, 0, 0, targetWidth, targetHeight);
+}
+
+function drawTwoDPet(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  metadata: TwoDPetMetadata,
+  state: BehaviorState,
+  scale: number,
+  elapsedSeconds: number,
+): void {
+  const motion = resolveTwoDMotion(metadata, state);
+  const sourceWidth = metadata.width ?? image.naturalWidth;
+  const sourceHeight = metadata.height ?? image.naturalHeight;
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const motionPadding = Math.ceil(24 * scale + (motion.bobPixels ?? 0) * 2 * scale + targetHeight * (motion.breatheScale ?? 0));
+  const canvasWidth = targetWidth + motionPadding * 2;
+  const canvasHeight = targetHeight + motionPadding * 2;
+  setCanvasSize(canvas, canvasWidth, canvasHeight);
+
+  const bobSeconds = motion.bobSeconds ?? 2.8;
+  const bob = Math.sin((elapsedSeconds / bobSeconds) * Math.PI * 2) * (motion.bobPixels ?? 6) * scale;
+  const breathe = Math.sin((elapsedSeconds / (bobSeconds * 0.9)) * Math.PI * 2) * (motion.breatheScale ?? 0.025);
+  const sway = Math.sin((elapsedSeconds / (bobSeconds * 1.15)) * Math.PI * 2) * (motion.swayDegrees ?? 1.2);
+  const flip = state === "walking-left" ? -1 : 1;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.save();
+  context.translate(canvas.width / 2, canvas.height / 2 + bob);
+  context.rotate((sway * Math.PI) / 180);
+  context.scale(flip * (1 + breathe * 0.35), 1 + breathe);
+  context.drawImage(image, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+  context.restore();
+}
+
+function resolveTwoDMotion(metadata: TwoDPetMetadata, state: BehaviorState): Required<TwoDPetMotion> {
+  const defaults = defaultTwoDMotion(state);
+  const preset =
+    metadata.stateMotions?.[state] ??
+    (state === "speaking" || state === "reviewing" ? metadata.speakingMotion : metadata.idleMotion);
+
+  return {
+    ...defaults,
+    ...preset,
+  };
+}
+
+function defaultTwoDMotion(state: BehaviorState): Required<TwoDPetMotion> {
+  if (state === "speaking" || state === "reviewing") {
+    return { bobPixels: 5, bobSeconds: 1.2, breatheScale: 0.04, swayDegrees: 0.8 };
+  }
+  if (state === "thinking" || state === "processing") {
+    return { bobPixels: 3, bobSeconds: 2.1, breatheScale: 0.018, swayDegrees: 0.6 };
+  }
+  if (state === "clicked") {
+    return { bobPixels: 10, bobSeconds: 0.55, breatheScale: 0.035, swayDegrees: 3 };
+  }
+  if (state === "error") {
+    return { bobPixels: 1, bobSeconds: 0.18, breatheScale: 0.01, swayDegrees: 4 };
+  }
+  return { bobPixels: 6, bobSeconds: 2.8, breatheScale: 0.025, swayDegrees: 1.2 };
+}
+
+function setCanvasSize(canvas: HTMLCanvasElement, width: number, height: number): void {
+  if (canvas.width === width && canvas.height === height) {
+    return;
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
 }
 
 function inferMetadata(image: HTMLImageElement): DesktopPetMetadata {

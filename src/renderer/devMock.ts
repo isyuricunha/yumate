@@ -251,6 +251,8 @@ function devPack(now: string): AppSnapshot["activePetPack"] {
     directoryPath: "dev",
     petJsonPath: "/default-pets/ainz/pet.json",
     spritesheetPath: "/default-pets/ainz/spritesheet.webp",
+    twoD: null,
+    twoDImagePath: null,
     metadata: {
       schemaVersion: 1,
       frameWidth: 192,

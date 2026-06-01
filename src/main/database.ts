@@ -31,6 +31,7 @@ interface RawPetPackRow {
   pet_json_path: string;
   spritesheet_path: string;
   metadata_json: string | null;
+  two_d_metadata_json: string | null;
   valid: number;
   validation_json: string;
   installed_at: string;
@@ -246,8 +247,8 @@ export class AppDatabase {
     this.run(
       `INSERT INTO pet_packs (
         id, display_name, description, directory_path, pet_json_path, spritesheet_path,
-        metadata_json, valid, validation_json, installed_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        metadata_json, two_d_metadata_json, valid, validation_json, installed_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         display_name = excluded.display_name,
         description = excluded.description,
@@ -255,6 +256,7 @@ export class AppDatabase {
         pet_json_path = excluded.pet_json_path,
         spritesheet_path = excluded.spritesheet_path,
         metadata_json = excluded.metadata_json,
+        two_d_metadata_json = excluded.two_d_metadata_json,
         valid = excluded.valid,
         validation_json = excluded.validation_json,
         updated_at = excluded.updated_at`,
@@ -266,6 +268,7 @@ export class AppDatabase {
         pack.petJsonPath,
         pack.spritesheetPath,
         pack.metadata ? JSON.stringify(pack.metadata) : null,
+        pack.twoD ? JSON.stringify(pack.twoD) : null,
         pack.valid ? 1 : 0,
         JSON.stringify(pack.validation),
         pack.installedAt,
@@ -669,6 +672,15 @@ export class AppDatabase {
         COMMIT;
       `);
     }
+
+    if (version < 2) {
+      this.exec(`
+        BEGIN TRANSACTION;
+        ALTER TABLE pet_packs ADD COLUMN two_d_metadata_json TEXT;
+        INSERT INTO schema_migrations (version, applied_at) VALUES (2, '${now()}');
+        COMMIT;
+      `);
+    }
   }
 
   private run(sql: string, params: SqlValue[] = []): void {
@@ -758,6 +770,7 @@ function mapTts(row: RawTtsRow): TtsSettings {
 }
 
 function mapPetPack(row: RawPetPackRow): InstalledPetPack {
+  const twoD = row.two_d_metadata_json ? JSON.parse(row.two_d_metadata_json) : null;
   return {
     id: row.id,
     displayName: row.display_name,
@@ -766,6 +779,8 @@ function mapPetPack(row: RawPetPackRow): InstalledPetPack {
     petJsonPath: row.pet_json_path,
     spritesheetPath: row.spritesheet_path,
     metadata: row.metadata_json ? JSON.parse(row.metadata_json) : null,
+    twoD,
+    twoDImagePath: twoD ? (twoD.imagePath ? path.join(row.directory_path, twoD.imagePath) : row.spritesheet_path) : null,
     valid: Boolean(row.valid),
     validation: JSON.parse(row.validation_json),
     installedAt: row.installed_at,
