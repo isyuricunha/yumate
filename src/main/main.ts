@@ -68,6 +68,7 @@ app.whenReady().then(async () => {
 
   database.ensureDefaultInstance(firstValidPack.id);
   database.resetTransientRuntimeStates();
+  applyStartupSetting(database.getGlobalSettings());
   windowsContextService = new WindowsContextService();
   aiService = new AiService(database, windowsContextService);
   ttsService = new TtsService(paths.userData);
@@ -185,6 +186,7 @@ function registerIpc(): void {
 
   ipcMain.handle("settings:save", (_event, payload: SaveSettingsPayload) => {
     database.updateSettings(payload);
+    applyStartupSetting(payload.global);
     refreshWindowsContext();
     registerHotkeys();
     const snapshot = database.getSnapshot(currentWindowsContext);
@@ -426,6 +428,17 @@ function rebuildTray(): void {
   ]);
 
   tray.setContextMenu(menu);
+}
+
+function applyStartupSetting(settings: ReturnType<AppDatabase["getGlobalSettings"]>): void {
+  if (isDev || process.platform !== "win32") {
+    return;
+  }
+
+  app.setLoginItemSettings({
+    openAtLogin: settings.startWithWindows,
+    path: process.execPath,
+  });
 }
 
 function registerHotkeys(): void {

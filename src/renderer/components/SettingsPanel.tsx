@@ -283,6 +283,26 @@ export function SettingsPanel({ snapshot, onClose }: SettingsPanelProps) {
             <label className="check-row">
               <input
                 type="checkbox"
+                checked={global.startWithWindows}
+                onChange={(event) => setGlobal({ ...global, startWithWindows: event.target.checked })}
+              />
+              <span>Start with Windows</span>
+            </label>
+            <label>
+              <span>Tray behavior</span>
+              <select
+                value={global.trayBehavior}
+                onChange={(event) =>
+                  setGlobal({ ...global, trayBehavior: event.target.value as GlobalSettings["trayBehavior"] })
+                }
+              >
+                <option value="minimize-to-tray">Minimize to tray</option>
+                <option value="quit">Quit on close</option>
+              </select>
+            </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
                 checked={global.clickThroughEnabled}
                 onChange={(event) => setGlobal({ ...global, clickThroughEnabled: event.target.checked })}
               />
