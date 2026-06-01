@@ -12,13 +12,13 @@ import {
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
-      content?: string;
+      content?: unknown;
     };
     delta?: {
-      content?: string;
+      content?: unknown;
     };
   }>;
-  output_text?: string;
+  output_text?: unknown;
   error?: {
     message?: string;
   };
@@ -293,7 +293,7 @@ export class AiService {
       throw new Error(`API ${response.status}: ${detail}`);
     }
 
-    const message = data?.choices?.[0]?.message?.content || data?.output_text;
+    const message = normalizeAssistantContent(data?.choices?.[0]?.message?.content ?? data?.output_text);
     if (!message) {
       throw new Error("The provider returned no assistant message.");
     }
@@ -322,6 +322,31 @@ function createTransientMessage(input: Omit<ChatMessage, "id" | "createdAt">): C
     id: randomUUID(),
     createdAt: new Date().toISOString(),
   };
+}
+
+function normalizeAssistantContent(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const text = value
+      .map((part) => normalizeAssistantContent(part))
+      .filter((part): part is string => Boolean(part))
+      .join("");
+    return text || null;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return (
+      normalizeAssistantContent(record.text) ??
+      normalizeAssistantContent(record.content) ??
+      normalizeAssistantContent(record.value)
+    );
+  }
+
+  return null;
 }
 
 function formatWindowsContext(context: Awaited<ReturnType<WindowsContextService["capture"]>>): string | null {
